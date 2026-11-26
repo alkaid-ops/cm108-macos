@@ -5,13 +5,13 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>BarrotBT10</string>
+    <string>RH899X</string>
     <key>CFBundleIdentifier</key>
-    <string>com.barrot.bt10.audio</string>
+    <string>com.ranhe.rh899x.audio</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Barrot BT10</string>
+    <string>RH-899X</string>
     <key>CFBundlePackageType</key>
     <string>BNDL</string>
     <key>CFBundleShortVersionString</key>
@@ -27,7 +27,7 @@
     <key>CFPlugInFactories</key>
     <dict>
         <key>B7A1C2D3-4E5F-6789-ABCD-EF0123456789</key>
-        <string>Barrot_CreatePlugin</string>
+        <string>Ranhe_CreatePlugin</string>
     </dict>
     <key>CFPlugInTypes</key>
     <dict>

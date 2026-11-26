@@ -1,8 +1,8 @@
-# BT10 192 kHz / 24-bit 能力审计
+# RH-899X 192 kHz / 24-bit 能力审计
 
 日期：2026-11-26
 
-对象：`Barrot UPnP Dongle`，VID:PID `0c1c:3a1d`，UAC 2.0。
+对象：`RH-899X`，VID:PID `0c1c:3a1d`，UAC 2.0。
 
 ## 1. 描述符事实
 
@@ -64,7 +64,7 @@ AudioControl 拓扑中只有 Clock Source 1：
   `hardware connection lost`，随后从 USB 总线消失。
 - 内核日志没有过流/过功率记录；随后出现 XHCI `setAddress` 超时，macOS
   `disable port`。
-- 重新安装 HAL 后 CoreAudio 仍枚举 BT10，但 USB 设备必须物理拔插才会回来。
+- 重新安装 HAL 后 CoreAudio 仍枚举 RH-899X，但 USB 设备必须物理拔插才会回来。
 
 这次掉线发生在高采样率测试之后，因此当前不能把 192 kHz 视为已验证能力。
 可能原因：

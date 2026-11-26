@@ -1,5 +1,5 @@
 /*
- * Barrot BT10 AudioServerPlugIn driver.
+ * Ranhe RH-899X AudioServerPlugIn driver.
  *
  * CoreAudio HAL output device -> lock-free SPSC ring -> USB worker ->
  * High-Speed isochronous endpooint 0x02 (64 x 24-byte microframes per
@@ -38,7 +38,7 @@
 static const UInt32 kSupportedRates[] = { 48000u, 96000u, 192000u };
 #define kSupportedRateCount (sizeof(kSupportedRates) / sizeof(kSupportedRates[0]))
 /* 96/192 kHz stay accepted by SetPropertyData for diagnostics, but are not
- * advertised: both caused the BT10 firmware to stop responding on real
+ * advertised: both caused the RH-899X firmware to stop responding on real
  * hardware. Only 48 kHz is exposed to CoreAudio. */
 #define kAdvertisedRateCount 1u
 
@@ -53,7 +53,7 @@ static const UInt32 kSupportedRates[] = { 48000u, 96000u, 192000u };
 /* Keep the ring at the same *time* depth (about 21 ms) at every rate. */
 #define kLevelFrames(transferFrames, n) ((UInt64)(transferFrames) * (n))
 
-#define kBarrotStatsSelector 'brst'
+#define kRanheStatsSelector 'rhst'
 
 enum {
     kFormatFloat32 = 0,
@@ -61,7 +61,7 @@ enum {
     kFormat60958AC3 = 2
 };
 
-typedef struct BarrotStats {
+typedef struct RanheStats {
     UInt64 usbTransfers;
     UInt64 usbFrames;
     UInt64 usbErrors;
@@ -72,7 +72,7 @@ typedef struct BarrotStats {
     UInt64 dups;
     UInt32 ringLevel;
     UInt32 ioClients;
-} BarrotStats;
+} RanheStats;
 
 typedef struct XferSlot {
     struct Driver *driver;
@@ -123,13 +123,13 @@ typedef struct Driver {
 
 static mach_timebase_info_data_t gTimebase;
 static os_log_t gHalLog;
-static CFStringRef kUID = CFSTR("BarrotBT10-0c1c-3a1d");
-static CFStringRef kModelUID = CFSTR("com.barrot.bt10.model");
-static CFStringRef kDeviceName = CFSTR("Barrot BT10");
-static CFStringRef kManufacturer = CFSTR("Barrot / BT10");
+static CFStringRef kUID = CFSTR("RH899X-0c1c-3a1d");
+static CFStringRef kModelUID = CFSTR("com.ranhe.rh899x.model");
+static CFStringRef kDeviceName = CFSTR("RH-899X");
+static CFStringRef kManufacturer = CFSTR("Ranhe");
 
 static void halLog(const char *fmt, ...) {
-    if (!gHalLog) gHalLog = os_log_create("com.barrot.bt10.audio", "hal");
+    if (!gHalLog) gHalLog = os_log_create("com.ranhe.rh899x.audio", "hal");
     char buf[256];
     va_list ap;
     va_start(ap, fmt);
@@ -786,9 +786,9 @@ static ULONG Release(void *inDriver) {
 }
 
 __attribute__((visibility("default")))
-void *Barrot_CreatePlugin(CFAllocatorRef allocator, CFUUIDRef typeID) {
+void *Ranhe_CreatePlugin(CFAllocatorRef allocator, CFUUIDRef typeID) {
     (void)allocator;
-    halLog("Barrot_CreatePlugin enter");
+    halLog("Ranhe_CreatePlugin enter");
     if (!typeID || !CFEqual(typeID, kAudioServerPlugInTypeUUID)) return NULL;
     Driver *d = calloc(1, sizeof(Driver));
     if (!d) return NULL;
@@ -825,7 +825,7 @@ void *Barrot_CreatePlugin(CFAllocatorRef allocator, CFUUIDRef typeID) {
         return NULL;
     }
     pthread_mutex_init(&d->lifecycleLock, NULL);
-    halLog("Barrot_CreatePlugin result=%p", (void *)d);
+    halLog("Ranhe_CreatePlugin result=%p", (void *)d);
     return d;
 }
 
@@ -1117,7 +1117,7 @@ static Boolean hasProperty(AudioObjectID obj, AudioObjectPropertySelector sel,
                 case kAudioDevicePropertySupportsMixing:
                 case kAudioDevicePropertyBufferFrameSize:
                 case kAudioDevicePropertyBufferFrameSizeRange:
-                case kBarrotStatsSelector:
+                case kRanheStatsSelector:
                     return true;
                 default:
                     return false;
@@ -1249,8 +1249,8 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
             *outDataSize = (2 * kAdvertisedRateCount + 1) *
                            sizeof(AudioStreamRangedDescription);
             return noErr;
-        case kBarrotStatsSelector:
-            *outDataSize = sizeof(BarrotStats);
+        case kRanheStatsSelector:
+            *outDataSize = sizeof(RanheStats);
             return noErr;
         case kAudioObjectPropertyBaseClass:
         case kAudioObjectPropertyClass:
@@ -1329,7 +1329,7 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef inDriver,
             break;
         case kAudioObjectPropertyName:
             *(CFStringRef *)outData = inObjectID == kDeviceID ? kDeviceName :
-                (inObjectID == kStreamID ? CFSTR("Barrot BT10 Output") : kDeviceName);
+                (inObjectID == kStreamID ? CFSTR("RH-899X Output") : kDeviceName);
             break;
         case kAudioObjectPropertyManufacturer:
             *(CFStringRef *)outData = kManufacturer;
@@ -1488,8 +1488,8 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef inDriver,
             break;
             *(UInt32 *)outData = 0;
             break;
-        case kBarrotStatsSelector: {
-            BarrotStats *s = (BarrotStats *)outData;
+        case kRanheStatsSelector: {
+            RanheStats *s = (RanheStats *)outData;
             memset(s, 0, sizeof(*s));
             s->usbTransfers = atomic_load(&d->usbTransfers);
             s->usbFrames = atomic_load(&d->usbFrames);

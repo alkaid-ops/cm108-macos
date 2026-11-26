@@ -1,4 +1,4 @@
-# BT10 HAL 系统加载验证与自动回滚
+# RH-899X HAL 系统加载验证与自动回滚
 
 日期：2026-11-25  
 环境：macOS 14.8.7（23J520），Apple M1（arm64）
@@ -8,8 +8,8 @@
 **PARTIAL**
 
 - Apple Development 签名已被当前机器的 AMFI 接受。
-- Core Audio Driver Service 成功加载 `com.barrot.bt10.audio`。
-- `Barrot BT10` 已出现在系统 CoreAudio 输出设备列表。
+- Core Audio Driver Service 成功加载 `com.ranhe.rh899x.audio`。
+- `RH-899X` 已出现在系统 CoreAudio 输出设备列表。
 - HALOutput 客户端完成两次 Start/Stop，USB 传输无错误。
 - 尚未进行物理听音，不能宣布完整播放链路通过。
 
@@ -20,16 +20,16 @@ Apple Development 证书在当前机器可用，但不能替代“标准 SIP/Gat
 
 ## 安装前审计
 
-- Bundle：`com.barrot.bt10.audio`，可执行文件 `BarrotBT10`，factory UUID
+- Bundle：`com.ranhe.rh899x.audio`，可执行文件 `RH899X`，factory UUID
   `B7A1C2D3-4E5F-6789-ABCD-EF0123456789`。
 - AudioServerPlugIn type UUID：`443ABAB8-E7B3-491A-B985-BEB9187030DB`。
-- Device UID：`BarrotBT10-0c1c-3a1d`；名称：`Barrot BT10`。
+- Device UID：`RH899X-0c1c-3a1d`；名称：`RH-899X`。
 - 签名链：Apple Development → Apple WWDR → Apple Root CA；
   TeamIdentifier 与 Apple 证书一致。
 - `codesign --verify --strict --deep` 通过，`spctl -a -vv` 返回 accepted。
 - 无 entitlements、无 embedded provisioning profile。
 - 三个已安装 HAL bundle 的 CFBundleIdentifier 均唯一。
-- `install.sh` 只移动/替换 `BarrotBT10.driver`，并检查内置扬声器仍然存在。
+- `install.sh` 只移动/替换 `RH899X.driver`，并检查内置扬声器仍然存在。
 
 测试期间的备份目录与日志未纳入公开仓库。
 
@@ -46,10 +46,10 @@ Apple Development 证书在当前机器可用，但不能替代“标准 SIP/Gat
 关键日志：
 
 ```
-Attempting to load: BarrotBT10.driver
-amfid: Entering OSX path for .../BarrotBT10.driver/Contents/MacOS/BarrotBT10
-Loading server plug-in com.barrot.bt10.audio...
-Done loading server plug-in com.barrot.bt10.audio...
+Attempting to load: RH899X.driver
+amfid: Entering OSX path for .../RH899X.driver/Contents/MacOS/RH899X
+Loading server plug-in com.ranhe.rh899x.audio...
+Done loading server plug-in com.ranhe.rh899x.audio...
 ```
 
 没有 `-423`、`-67050` 或 provisioning profile 拒绝。当前测试不需要已嵌入 profile。
@@ -57,7 +57,7 @@ Done loading server plug-in com.barrot.bt10.audio...
 安装后设备：
 
 ```
-54   Barrot BT10   BarrotBT10-0c1c-3a1d
+54   RH-899X   RH899X-0c1c-3a1d
 76   BlackHole 2ch BlackHole2ch_UID
 106  MacBook Air扬声器 BuiltInSpeakerDevice
 ```
@@ -67,7 +67,7 @@ Done loading server plug-in com.barrot.bt10.audio...
 
 ## CoreAudio 功能测试
 
-新增 `coreaudio_device_test.c`，通过 HALOutput 的 CurrentDevice 定向 BT10，
+新增 `coreaudio_device_test.c`，通过 HALOutput 的 CurrentDevice 定向 RH-899X，
 播放 440 Hz、48 kHz、双声道 Float32，不改变系统默认输出。
 
 首次测试发现启动阶段提前提交了一个未填充的 Transfer，产生 575 帧启动欠载。
@@ -94,7 +94,7 @@ Done loading server plug-in com.barrot.bt10.audio...
 1. Apple Development 被 AMFI 接受：**是**。
 2. 需要 provisioning profile：**当前测试未发现需要**；无 profile、无受限 entitlements，加载成功。
 3. Driver Service 加载插件：**是**。
-4. 系统出现 `Barrot BT10`：**是**（CoreAudio 与 system_profiler 均确认；未单独截取控制中心 UI）。
+4. 系统出现 `RH-899X`：**是**（CoreAudio 与 system_profiler 均确认；未单独截取控制中心 UI）。
 5. IOProc：**正常**，两次 Start/Stop 成功。
 6. USB 传输：**短测稳定**，0 错误、0 欠载、0 溢出。
 7. 物理听音：**仍需用户完成**。
@@ -103,7 +103,7 @@ Done loading server plug-in com.barrot.bt10.audio...
 
 ## BlackHole 清理
 
-`BarrotBT10.driver` 本身不依赖 BlackHole。为避免当前 `install.sh` 的健康检查
+`RH899X.driver` 本身不依赖 BlackHole。为避免当前 `install.sh` 的健康检查
 误判，先将其对 `BlackHole2ch_UID` 的硬性要求移除，仅保留内置扬声器检查。
 
 随后安全移除 BlackHole：
@@ -111,7 +111,7 @@ Done loading server plug-in com.barrot.bt10.audio...
 - 将 `BlackHole2ch.driver` 移至
   `backups/blackhole-uninstall-20261125-211032/`，未直接销毁。
 - 执行 `pkgutil --forget audio.existential.BlackHole2ch`。
-- 重启 `coreaudiod`，确认设备列表只剩 `Barrot BT10`、内置麦克风和内置扬声器。
+- 重启 `coreaudiod`，确认设备列表只剩 `RH-899X`、内置麦克风和内置扬声器。
 - 删除后再次运行 CoreAudio 测试：两次 Start/Stop 均成功，`usb_err=0`、
   `frame_err=0`、`under=0`、`over=0`、`drops=0`、`dups=0`。
 
@@ -119,7 +119,7 @@ Done loading server plug-in com.barrot.bt10.audio...
 
 ## 待用户完成的一次验收
 
-打开控制中心 → 声音 → 输出，选择 `Barrot BT10`，播放任意音频并确认 BT10
+打开控制中心 → 声音 → 输出，选择 `RH-899X`，播放任意音频并确认 RH-899X
 实际出声；随后切回 `MacBook Air扬声器`，确认声音恢复。只有该步骤通过后，
 才能把状态改为 `PASS`。
 

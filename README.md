@@ -1,7 +1,9 @@
-# Barrot BT10 macOS AudioServerPlugIn
+# Ranhe RH-899X macOS AudioServerPlugIn
 
-An AudioServerPlugIn for the **Barrot BT10 / `0c1c:3a1d`** USB audio device.
-It exposes BT10 as a native CoreAudio output device, so it appears in
+Repository: <https://github.com/alkaid-ops/cm108-macos>
+
+An AudioServerPlugIn for the **Ranhe RH-899X / `0c1c:3a1d`** USB audio device.
+It exposes RH-899X as a native CoreAudio output device, so it appears in
 Control Center → Sound → Output without BlackHole or a helper process.
 
 ## Status — v0.1.0
@@ -10,7 +12,7 @@ Control Center → Sound → Output without BlackHole or a helper process.
 - **DTS / AC3 IEC61937 passthrough: validated on the host side.**
   The bitstream reaches USB alt 2 with zero transfer errors; physical
   decoder output still requires a listening test on the downstream device.
-- **96 / 192 kHz: not usable.** Both caused the BT10 firmware to stop
+- **96 / 192 kHz: not usable.** Both caused the RH-899X firmware to stop
   responding and macOS to disable the USB port. Only 48 kHz is advertised.
 - **24-bit: not supported by this USB input.** The UAC2 descriptors declare
   a 2-byte subslot and 16-bit resolution; there is no 24-bit alternate setting.
@@ -23,7 +25,7 @@ Control Center → Sound → Output without BlackHole or a helper process.
 - `security find-identity -v -p codesigning` must show that identity.
 
 Ad-hoc and locally self-signed bundles are rejected by AMFI when loaded as a
-system HAL plug-in. See `docs/BT10_HAL_LOAD_TEST.md`.
+system HAL plug-in. See `docs/RH899X_HAL_LOAD_TEST.md`.
 
 ## Build
 
@@ -46,8 +48,10 @@ cd barrot-hal
 ```
 
 The installer verifies the Apple signature, backs up any previous bundle,
-installs to `/Library/Audio/Plug-Ins/HAL/BarrotBT10.driver`, restarts
-`coreaudiod`, and rolls back if the built-in speaker disappears.
+installs to `/Library/Audio/Plug-Ins/HAL/RH899X.driver`, restarts
+`coreaudiod`, and rolls back if the built-in speaker disappears. If the
+legacy `BarrotBT10.driver` is present, it is moved to a timestamped backup
+before the new bundle is installed.
 
 ## Test
 
@@ -56,7 +60,7 @@ cd barrot-hal
 ./test.sh 6                         # in-process object model + 64x24 USB
 clang -std=c11 -O2 -o coreaudio-device-test coreaudio_device_test.c \
   -framework CoreAudio -framework AudioToolbox -framework CoreFoundation
-./coreaudio-device-test 10          # 48 kHz PCM, targeted at BT10
+./coreaudio-device-test 10          # 48 kHz PCM, targeted at RH-899X
 ```
 
 DTS / IEC61937 host-side test:
@@ -77,7 +81,7 @@ CoreAudio client
   -> AudioServerPlugIn (barrot-hal/BarrotAudio.c)
   -> lock-free SPSC ring buffer
   -> USB isochronous worker
-  -> BT10 (0c1c:3a1d)
+  -> RH-899X (0c1c:3a1d)
 ```
 
 - PCM: 48 kHz, 64 microframes × 24 bytes per 8 ms transfer.
@@ -100,6 +104,6 @@ CoreAudio client
 - `docs/` — USB protocol, microframe, HAL load, passthrough, and rate audits.
 
 The audit documents are in Chinese. Start with
-`docs/BT10_USB_AUDIO_PROTOCOL_AUDIT.md` and
-`docs/BT10_DTS_AC3_PASSTHROUGH_EXPERIMENT.md`.
+`docs/RH899X_USB_AUDIO_PROTOCOL_AUDIT.md` and
+`docs/RH899X_DTS_AC3_PASSTHROUGH_EXPERIMENT.md`.
 

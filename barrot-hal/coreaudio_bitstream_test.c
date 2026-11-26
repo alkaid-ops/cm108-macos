@@ -174,10 +174,10 @@ int main(int argc, char **argv) {
     state.input = fopen(argv[1], "rb");
     if (!state.input) { perror(argv[1]); return 2; }
 
-    CFStringRef uid = CFSTR("BarrotBT10-0c1c-3a1d");
+    CFStringRef uid = CFSTR("RH899X-0c1c-3a1d");
     AudioDeviceID device = findDevice(uid);
     if (device == kAudioObjectUnknown) {
-        fprintf(stderr, "Barrot BT10 not found\n");
+        fprintf(stderr, "RH-899X not found\n");
         return 2;
     }
     AudioStreamID stream = firstOutputStream(device);

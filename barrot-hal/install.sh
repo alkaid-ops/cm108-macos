@@ -2,8 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-BUNDLE="build/BarrotBT10.driver"
-DEST="/Library/Audio/Plug-Ins/HAL/BarrotBT10.driver"
+BUNDLE="build/RH899X.driver"
+DEST="/Library/Audio/Plug-Ins/HAL/RH899X.driver"
+LEGACY_DEST="/Library/Audio/Plug-Ins/HAL/BarrotBT10.driver"
 
 if [[ ! -d "$BUNDLE" ]]; then
   echo "missing $BUNDLE; run ./build.sh first" >&2
@@ -30,7 +31,7 @@ if ! codesign --verify --strict --deep "$BUNDLE" >/dev/null 2>&1; then
   exit 2
 fi
 
-LIST_AUDIO="${TMPDIR:-/tmp}/barrot-list-audio-$$"
+LIST_AUDIO="${TMPDIR:-/tmp}/rh899x-list-audio-$$"
 clang -std=c11 -O2 -o "$LIST_AUDIO" tools/list_audio.c \
   -framework CoreAudio -framework CoreFoundation
 trap 'rm -f "$LIST_AUDIO"' EXIT
@@ -38,13 +39,6 @@ DEVICES_BEFORE="$("$LIST_AUDIO" 2>/dev/null || true)"
 
 echo "$SIG" | grep -E "Authority=|TeamIdentifier=|Signature="
 echo "Installing $BUNDLE -> $DEST"
-
-STAMP="$(date +%Y%m%d-%H%M%S)"
-if [[ -d "$DEST" ]]; then
-  sudo mv "$DEST" "/Library/Audio/Plug-Ins/HAL/BarrotBT10.driver.backup-$STAMP"
-fi
-sudo cp -R "$BUNDLE" "$DEST"
-sudo chown -R root:wheel "$DEST"
 
 restart_audio() {
   if sudo launchctl print system/com.apple.audio.coreaudiod >/dev/null 2>&1; then
@@ -55,6 +49,36 @@ restart_audio() {
   sleep 4
 }
 
+STAMP="$(date +%Y%m%d-%H%M%S)"
+NEW_BACKUP=""
+LEGACY_BACKUP=""
+
+if [[ -d "$DEST" ]]; then
+  NEW_BACKUP="${DEST}.backup-$STAMP"
+  sudo mv "$DEST" "$NEW_BACKUP"
+fi
+if [[ -d "$LEGACY_DEST" ]]; then
+  LEGACY_BACKUP="${LEGACY_DEST}.backup-$STAMP"
+  sudo mv "$LEGACY_DEST" "$LEGACY_BACKUP"
+fi
+
+rollback() {
+  echo "Rolling back RH899X.driver." >&2
+  if [[ -d "$DEST" ]]; then
+    sudo mv "$DEST" "${DEST}.rollback-$STAMP" 2>/dev/null || true
+  fi
+  if [[ -n "$NEW_BACKUP" && -d "$NEW_BACKUP" ]]; then
+    sudo mv "$NEW_BACKUP" "$DEST" 2>/dev/null || true
+  fi
+  if [[ -n "$LEGACY_BACKUP" && -d "$LEGACY_BACKUP" && ! -d "$LEGACY_DEST" ]]; then
+    sudo mv "$LEGACY_BACKUP" "$LEGACY_DEST" 2>/dev/null || true
+  fi
+  restart_audio
+}
+
+sudo cp -R "$BUNDLE" "$DEST"
+sudo chown -R root:wheel "$DEST"
+
 restart_audio
 
 echo "--- CoreAudio devices ---"
@@ -64,17 +88,15 @@ echo "$DEVICES"
 if [[ "$DEVICES_BEFORE" == *BuiltInSpeakerDevice* &&
       "$DEVICES" != *BuiltInSpeakerDevice* ]]; then
   echo "HEALTH CHECK FAILED: built-in speaker disappeared." >&2
-  echo "Rolling back BarrotBT10.driver only." >&2
-  sudo mv "$DEST" "/Library/Audio/Plug-Ins/HAL/BarrotBT10.driver.rollback-$STAMP" 2>/dev/null || true
-  restart_audio
+  rollback
   echo "--- After rollback ---"
   "$LIST_AUDIO" 2>/dev/null || true
   exit 4
 fi
 
 echo "--- load check ---"
-if grep -q "BarrotBT10-0c1c-3a1d" <<<"$DEVICES"; then
-  echo "SUCCESS: Barrot BT10 is registered with CoreAudio."
+if grep -q "RH899X-0c1c-3a1d" <<<"$DEVICES"; then
+  echo "SUCCESS: RH-899X is registered with CoreAudio."
 else
   echo "NOT REGISTERED. Check:"
   echo "  sudo log show --last 2m --info --debug --predicate 'process == \"amfid\"'"

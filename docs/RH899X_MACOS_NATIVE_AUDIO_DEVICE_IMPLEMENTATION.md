@@ -1,4 +1,4 @@
-# BT10 macOS 原生 CoreAudio 输出设备：实现
+# RH-899X macOS 原生 CoreAudio 输出设备：实现
 
 目标架构：
 
@@ -6,7 +6,7 @@
 Control Center / CoreAudio
         |
         v
-AudioServerPlugIn (BarrotBT10.driver)
+AudioServerPlugIn (RH899X.driver)
         |
         |  DoIOOperation(WriteMix, Float32 48k stereo)
         v
@@ -17,7 +17,7 @@ USB Worker thread
         |
         |  64 x 24-byte IOUSBIsocFrame, 8 ms transfer, 2-3 in flight
         v
-BT10 USB HS isochronous OUT endpoint 0x02
+RH-899X USB HS isochronous OUT endpoint 0x02
 ```
 
 不依赖 BlackHole，不依赖 Bridge 进程，不依赖 IEC61937。
@@ -27,7 +27,7 @@ BT10 USB HS isochronous OUT endpoint 0x02
 | 文件 | 作用 |
 | --- | --- |
 | `barrot-hal/BarrotAudio.c` | 完整 AudioServerPlugIn 驱动 |
-| `barrot-hal/BarrotBT10.plist` | CFPlugIn bundle Info.plist |
+| `barrot-hal/RH899X.plist` | CFPlugIn bundle Info.plist |
 | `barrot-hal/build.sh` | 构建 bundle（可选 Apple 证书签名） |
 | `barrot-hal/install.sh` | 安装到系统 HAL 目录，拒绝 ad-hoc 签名，可回滚 |
 | `barrot-hal/selftest.c` | 不经过 coreaudiod 的对象模型/IO/USB 自测 |
@@ -41,7 +41,7 @@ BT10 USB HS isochronous OUT endpoint 0x02
 | 对象 | ID | 关键属性 |
 | --- | --- | --- |
 | PlugIn | `kAudioObjectPlugInObject` | `DeviceList={0x100}`, `TranslateUIDToDevice`, `ResourceBundle` |
-| Device | `0x100` | UID `BarrotBT10-0c1c-3a1d`, 名称 `Barrot BT10`, USB transport, 48 kHz, 2ch, volume/mute |
+| Device | `0x100` | UID `RH899X-0c1c-3a1d`, 名称 `RH-899X`, USB transport, 48 kHz, 2ch, volume/mute |
 | Stream | `0x101` | output, speaker terminal, Float32 packed 48k 2ch |
 
 设备属性包括：
@@ -121,7 +121,7 @@ Stopped -> Starting -> Running -> Stopping -> Stopped
 ## 5. 构建与签名
 
 ```sh
-cd $HOME/barrot-bt10-macos/barrot-hal
+cd $HOME/cm108-macos/barrot-hal
 ./build.sh
 ```
 
@@ -142,8 +142,8 @@ CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build.sh
 
 不满足时拒绝安装，并打印 `-423` 原因。
 
-安装是可回滚的：已存在的 `BarrotBT10.driver` 先移动到
-`BarrotBT10.driver.backup-<timestamp>`。
+安装是可回滚的：已存在的 `RH899X.driver` 先移动到
+`RH899X.driver.backup-<timestamp>`。
 
 ## 6. 非系统自测
 

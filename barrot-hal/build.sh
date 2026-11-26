@@ -2,13 +2,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-OUT="build/BarrotBT10.driver"
+OUT="build/RH899X.driver"
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
-cp BarrotBT10.plist "$OUT/Contents/Info.plist"
+cp RH899X.plist "$OUT/Contents/Info.plist"
 
 clang -std=c11 -bundle -fPIC -O2 -Wall \
   -Wno-deprecated-declarations -pthread \
-  -o "$OUT/Contents/MacOS/BarrotBT10" BarrotAudio.c \
+  -o "$OUT/Contents/MacOS/RH899X" BarrotAudio.c \
   -framework CoreAudio -framework CoreFoundation -framework IOKit
 
 IDENTITY="${CODESIGN_IDENTITY:-}"
@@ -20,11 +20,11 @@ fi
 if [[ -n "$IDENTITY" ]]; then
   echo "signing with identity: $IDENTITY"
   codesign --force --deep --sign "$IDENTITY" --timestamp=none \
-    --identifier com.barrot.bt10.audio "$OUT"
+    --identifier com.ranhe.rh899x.audio "$OUT"
 else
   echo "WARNING: no Apple Development identity found; ad-hoc signing for selftest only"
   codesign --force --deep --sign - \
-    --identifier com.barrot.bt10.audio "$OUT"
+    --identifier com.ranhe.rh899x.audio "$OUT"
 fi
 
 echo "built $OUT"

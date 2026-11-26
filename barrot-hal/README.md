@@ -1,4 +1,4 @@
-# Barrot BT10 AudioServerPlugIn
+# Ranhe RH-899X AudioServerPlugIn
 
 独立的 macOS CoreAudio 输出设备驱动（AudioServerPlugIn），不依赖 BlackHole。
 
@@ -25,7 +25,7 @@ CODESIGN_IDENTITY="Developer ID Application: ..." ./build.sh
 
 ## 系统级 CoreAudio 测试
 
-安装并枚举成功后，可定向 `Barrot BT10` 播放 440 Hz，不改变系统默认输出：
+安装并枚举成功后，可定向 `RH-899X` 播放 440 Hz，不改变系统默认输出：
 
 ```sh
 clang -std=c11 -O2 -o coreaudio-device-test coreaudio_device_test.c \
@@ -33,12 +33,12 @@ clang -std=c11 -O2 -o coreaudio-device-test coreaudio_device_test.c \
 ./coreaudio-device-test 10          # 48 kHz
 ```
 
-实际加载和测试结果见 `../docs/BT10_HAL_LOAD_TEST.md`。
+实际加载和测试结果见 `../docs/RH899X_HAL_LOAD_TEST.md`。
 
 设备 USB 输入最终只稳定支持 **48 kHz / 2ch / 16-bit PCM**。
-96/192 kHz 在真机上会导致 BT10 固件停止响应并禁用 USB 端口，因此 HAL
+96/192 kHz 在真机上会导致 RH-899X 固件停止响应并禁用 USB 端口，因此 HAL
 只对外公布 48 kHz；多采样率代码保留给 `selftest` 诊断。24-bit 不在
-UAC2 描述符中，详见 `../docs/BT10_192K_24BIT_AUDIT.md`。
+UAC2 描述符中，详见 `../docs/RH899X_192K_24BIT_AUDIT.md`。
 
 ## DTS / AC3 位流测试
 
@@ -50,9 +50,9 @@ clang -std=c11 -O2 -o coreaudio-bitstream-test coreaudio_bitstream_test.c \
 ./coreaudio-bitstream-test '/path/to/test.dts' 10
 ```
 
-测试会取得 BT10 的 hog mode、关闭 mixing，结束后恢复原格式和默认状态。
+测试会取得 RH-899X 的 hog mode、关闭 mixing，结束后恢复原格式和默认状态。
 主机侧 DTS 传输已通过；设备实际出声仍需下游解码器切到 PC-USB 后听音。
-详见 `../docs/BT10_DTS_AC3_PASSTHROUGH_EXPERIMENT.md`。
+详见 `../docs/RH899X_DTS_AC3_PASSTHROUGH_EXPERIMENT.md`。
 
 ## 安装
 
@@ -62,11 +62,13 @@ clang -std=c11 -O2 -o coreaudio-bitstream-test coreaudio_bitstream_test.c \
 
 脚本会拒绝 ad-hoc 和本地自签名；只接受 Apple Development 或
 Developer ID Application，并执行 `codesign --verify --strict --deep`。
+安装到 `/Library/Audio/Plug-Ins/HAL/RH899X.driver`；若存在旧的
+`BarrotBT10.driver`，会先移动为带时间戳的备份，再安装新 bundle。
 
 ## 证据
 
-- `../docs/BT10_MACOS_NATIVE_AUDIO_DEVICE_AUDIT.md`
-- `../docs/BT10_MACOS_NATIVE_AUDIO_DEVICE_IMPLEMENTATION.md`
-- `../docs/BT10_MACOS_NATIVE_AUDIO_DEVICE_TEST.md`
-- `../docs/BT10_HAL_LOAD_TEST.md`
-- `../docs/BT10_192K_24BIT_AUDIT.md`
+- `../docs/RH899X_MACOS_NATIVE_AUDIO_DEVICE_AUDIT.md`
+- `../docs/RH899X_MACOS_NATIVE_AUDIO_DEVICE_IMPLEMENTATION.md`
+- `../docs/RH899X_MACOS_NATIVE_AUDIO_DEVICE_TEST.md`
+- `../docs/RH899X_HAL_LOAD_TEST.md`
+- `../docs/RH899X_192K_24BIT_AUDIT.md`

@@ -1,6 +1,6 @@
-# BT10 High-Speed 等时传输微帧审计
+# RH-899X High-Speed 等时传输微帧审计
 
-对象：`Barrot UPnP Dongle`，VID:PID `0c1c:3a1d`，UAC 2.0，链路 480 Mbps。
+对象：`RH-899X`，VID:PID `0c1c:3a1d`，UAC 2.0，链路 480 Mbps。
 
 > 说明：本审计产生于 BlackHole bridge 阶段，文中提到的 `bridge/` 工具和
 > 测试日志未包含在本仓库；结论已被最终 HAL 的 64×24 传输路径采用。
@@ -322,7 +322,7 @@ SDK 头文件说明：
 只做一次实际听音验收：
 
 ```sh
-cd $HOME/barrot-bt10-macos/bridge/tests
+cd $HOME/cm108-macos/bridge/tests
 ./set_default BlackHole2ch_UID
 cd ..
 ./barrot-bridge-mf
@@ -340,7 +340,7 @@ afplay /tmp/tone440.wav
 ## 14. 复现命令
 
 ```sh
-cd $HOME/barrot-bt10-macos/bridge/tests
+cd $HOME/cm108-macos/bridge/tests
 ./iso_diag --mode clock --seconds 2
 ./iso_diag --mode probe --repeats 5
 ./iso_diag --mode policy

@@ -1,10 +1,10 @@
-# BT10 macOS 原生 CoreAudio 输出设备：测试报告
+# RH-899X macOS 原生 CoreAudio 输出设备：测试报告
 
-环境：macOS 14.8.7（23J520），Apple M1，BT10 `0c1c:3a1d` 已连接。
+环境：macOS 14.8.7（23J520），Apple M1，RH-899X `0c1c:3a1d` 已连接。
 
 > 2026-11-25 更新：Apple Development 签名已通过 AMFI，HAL 加载、设备枚举、
 > CoreAudio IOProc 和 USB 传输均已实测通过。以下早期“AMFI 阻塞”章节保留为
-> 历史记录；当前状态和证据见 `BT10_HAL_LOAD_TEST.md`。
+> 历史记录；当前状态和证据见 `RH899X_HAL_LOAD_TEST.md`。
 
 测试分两类：
 
@@ -33,8 +33,8 @@ helper exited due to SIGABRT
 
 | 检查项 | 结果 |
 | --- | --- |
-| CoreAudio 枚举到 BT10 | **否** |
-| 控制中心显示 BT10 | **否** |
+| CoreAudio 枚举到 RH-899X | **否** |
+| 控制中心显示 RH-899X | **否** |
 | 失败阶段 | AMFI 代码签名校验（插件代码执行前） |
 | 退出码 | helper `SIGABRT`，连续 6 次 corpse |
 
@@ -50,8 +50,8 @@ helper exited due to SIGABRT
 ```
 Initialize: 0
 device id: 256 (expected 256)
-device name: Barrot BT10
-device uid: BarrotBT10-0c1c-3a1d
+device name: RH-899X
+device uid: RH899X-0c1c-3a1d
 transport: 0x75736220        # 'usb '
 stream config: 1 buffers, 2 channels
 asbd: 48000 Hz, 2 ch, 32 bits, flags=0x9
@@ -198,7 +198,7 @@ SIGABRT
 
 | 项目 | 状态 | 原因 |
 | --- | --- | --- |
-| 控制中心枚举 BT10 | 阻塞 | AMFI 拒绝 ad-hoc/自签名；无 Apple 证书 |
+| 控制中心枚举 RH-899X | 阻塞 | AMFI 拒绝 ad-hoc/自签名；无 Apple 证书 |
 | 系统 Shortcut/默认设备切换 | 阻塞 | 同上 |
 | CoreAudio 客户端播放 | 驱动侧已自测，系统侧阻塞 | 同上 |
 | 物理听音 | 待验收 | 需要系统枚举成功 |
@@ -214,7 +214,7 @@ SIGABRT
 在拿到证书后，需要重新执行：
 
 ```sh
-cd $HOME/barrot-bt10-macos/barrot-hal
+cd $HOME/cm108-macos/barrot-hal
 CODESIGN_IDENTITY="..." ./build.sh
 ./install.sh
 ```

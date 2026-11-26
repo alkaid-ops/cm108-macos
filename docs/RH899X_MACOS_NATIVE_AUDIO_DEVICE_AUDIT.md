@@ -1,8 +1,8 @@
-# BT10 macOS 原生 CoreAudio 输出设备：可行性与阻塞审计
+# RH-899X macOS 原生 CoreAudio 输出设备：可行性与阻塞审计
 
 环境：macOS **14.8.7**（Build `23J520`），Apple M1，Xcode SDK 15.2。
 
-对象：`Barrot UPnP Dongle`，VID:PID `0c1c:3a1d`，UAC 2.0，High Speed。
+对象：`RH-899X`，VID:PID `0c1c:3a1d`，UAC 2.0，High Speed。
 
 本审计只读取系统状态、安装/移除本项目自己的测试 bundle，并与 Apple 官方
 `AudioServerPlugIn` 契约、当前 SDK 头文件和实际 `amfid` 日志对照。
@@ -140,7 +140,7 @@ Apple Development 私钥。具体证书标识不公开。
 | AudioServerPlugIn + Apple Development（免费 Apple ID） | 是 | **可能**，需要用户登录 Apple ID 并创建证书；是否还需 provisioning profile 未实测 | 唯一未验证的零成本候选 |
 | AudioServerPlugIn + ad-hoc / 自签名 | 是（架构上） | 否 | 本机实测 AMFI `-423` |
 | DriverKit `IOUserAudioDriver` | 是 | 否 | 需要付费 Developer Program 与 DriverKit entitlement |
-| CoreAudio Aggregate / Multi-Output Device | 否 | 是 | 只能组合已有设备，不能把 BT10 注册成新设备 |
+| CoreAudio Aggregate / Multi-Output Device | 否 | 是 | 只能组合已有设备，不能把 RH-899X 注册成新设备 |
 | BlackHole + Bridge | 否 | 是 | 只是转发进程，控制中心看到的是 BlackHole |
 | 旧 IOAudioFamily kext | 是（旧系统） | 否 | Apple Silicon 上已淘汰，且需要 kext 签名/SIP 例外 |
 
@@ -152,8 +152,8 @@ ring、USB Worker 和 64×24 微帧传输。它**只差可加载的 Apple 证书
 ### 3.2 Aggregate / Multi-Output 不能冒充独立设备
 
 `AudioHardwareCreateAggregateDevice` 只能聚合 CoreAudio 已经识别的设备。
-BT10 当前不是 CoreAudio 设备，因此无法被聚合。即使把 BlackHole 聚合成一个
-名为 “BT10” 的设备，底层仍然是 BlackHole + 转发进程，不满足最终验收标准。
+RH-899X 当前不是 CoreAudio 设备，因此无法被聚合。即使把 BlackHole 聚合成一个
+名为 “RH-899X” 的设备，底层仍然是 BlackHole + 转发进程，不满足最终验收标准。
 
 ### 3.3 DriverKit 不比 HAL 更便宜
 
@@ -177,6 +177,6 @@ BT10 当前不是 CoreAudio 设备，因此无法被聚合。即使把 BlackHole
    provisioning profile 仍待实测。
 5. 本项目已经完成所有不依赖证书的部分：驱动源码、bundle、构建脚本、
    非系统 selftest、64×24 USB 传输验证。见
-   `BT10_MACOS_NATIVE_AUDIO_DEVICE_IMPLEMENTATION.md` 与
-   `BT10_MACOS_NATIVE_AUDIO_DEVICE_TEST.md`。
+   `RH899X_MACOS_NATIVE_AUDIO_DEVICE_IMPLEMENTATION.md` 与
+   `RH899X_MACOS_NATIVE_AUDIO_DEVICE_TEST.md`。
 

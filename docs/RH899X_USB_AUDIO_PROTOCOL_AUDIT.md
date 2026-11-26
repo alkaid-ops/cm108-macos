@@ -1,13 +1,13 @@
-# BT10 USB Audio 协议审计
+# RH-899X USB Audio 协议审计
 
-对象：`Barrot UPnP Dongle`，VID:PID `0c1c:3a1d`，厂商串 `BT10 / PC_USB Audio`。
+对象：`RH-899X`，VID:PID `0c1c:3a1d`，厂商串 `RH-899X / PC_USB Audio`。
 
 证据来源：
 
-- 本机原始描述符读取：`$HOME/barrot-bt10-macos/usbdesc 0x0c1c 0x3a1d`
-- IOKit 注册信息：`ioreg -r -n 'Barrot UPnP Dongle' -l`
+- 本机原始描述符读取：`$HOME/cm108-macos/usbdesc 0x0c1c 0x3a1d`
+- IOKit 注册信息：`ioreg -r -n 'RH-899X' -l`
 - 桥接实测统计（1 秒粒度）：`cap_peak`、`cap_rms`、`usb_peak`、`usb_rms`
-- 标准 UAC 控制请求探测：`$HOME/barrot-bt10-macos/usbfu`
+- 标准 UAC 控制请求探测：`$HOME/cm108-macos/usbfu`
 
 本阶段未发送任何厂商私有请求，未写 EEPROM，未刷写固件。
 
@@ -131,7 +131,7 @@ Feature Unit 10：`bSourceID=3`，`bmaControls[0]=0x00000003`，
 
 结论：
 
-- 未找到 BT10 该 VID:PID 的公开厂商初始化序列或固件。
+- 未找到 RH-899X 该 VID:PID 的公开厂商初始化序列或固件。
 - 未发现主机在枚举阶段发出非标准控制请求的证据。
 - 唯一成功发出的控制请求是标准 clock SET_CUR 48000。
 
@@ -161,7 +161,7 @@ Feature Unit 10：`bSourceID=3`，`bmaControls[0]=0x00000003`，
 
 1. 已完成：`SetPipePolicy` 不可用；改用 `frReqCount=24` 表达微帧长度。
 2. 已完成：64×24（8 ms）与 8×24（1 ms）两种形状均在主机侧通过 20–40 s 测试。
-   详见 `docs/BT10_HS_ISOCHRONOUS_MICROFRAME_AUDIT.md`。
+   详见 `docs/RH899X_HS_ISOCHRONOUS_MICROFRAME_AUDIT.md`。
 3. 待验收：用 `barrot-bridge-mf` 做一次实际听音，确认下游解码器 PC-USB 输入。
 4. 若仍无声：在 Windows 侧抓取厂商驱动的 USB 控制传输，作为初始化序列来源。
 

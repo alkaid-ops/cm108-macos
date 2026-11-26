@@ -98,14 +98,14 @@ static void printCF(AudioServerPlugInDriverRef drv, AudioObjectID obj,
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
     const char *path = argc > 1 ? argv[1] :
-        "build/BarrotBT10.driver/Contents/MacOS/BarrotBT10";
+        "build/RH899X.driver/Contents/MacOS/RH899X";
     double seconds = argc > 2 ? atof(argv[2]) : 2.0;
     double rate = argc > 3 ? atof(argv[3]) : 48000.0;
     int runs = argc > 4 ? atoi(argv[4]) : 2;
     void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!h) { printf("dlopen failed: %s\n", dlerror()); return 1; }
     void *(*create)(CFAllocatorRef, CFUUIDRef) =
-        (void *(*)(CFAllocatorRef, CFUUIDRef))dlsym(h, "Barrot_CreatePlugin");
+        (void *(*)(CFAllocatorRef, CFUUIDRef))dlsym(h, "Ranhe_CreatePlugin");
     if (!create) { printf("factory missing\n"); return 1; }
     void *drvRaw = create(kCFAllocatorDefault, kAudioServerPlugInTypeUUID);
     if (!drvRaw) { printf("factory returned NULL\n"); return 1; }
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
             if (sec >= lastPrint + 5) {
                 lastPrint = sec;
                 Stats st; memset(&st, 0, sizeof(st)); size = sizeof(st);
-                if (getData(drv, kDeviceID, 'brst', kAudioObjectPropertyScopeGlobal,
+                if (getData(drv, kDeviceID, 'rhst', kAudioObjectPropertyScopeGlobal,
                             &size, &st, 0, NULL)) {
                     printf("run=%d sec=%d tx=+%llu frames=+%llu under=+%llu "
                            "drop=+%llu dup=+%llu level=%u usb_err=%llu frame_err=%llu\n",

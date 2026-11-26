@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
     double rate = argc > 2 ? atof(argv[2]) : 48000.0;
     if (seconds < 1.0) seconds = 1.0;
 
-    const char *uidText = "BarrotBT10-0c1c-3a1d";
+    const char *uidText = "RH899X-0c1c-3a1d";
     CFStringRef uid = CFStringCreateWithCString(
         kCFAllocatorDefault, uidText, kCFStringEncodingUTF8);
     AudioDeviceID device = findDevice(uid);
@@ -197,7 +197,7 @@ int main(int argc, char **argv) {
     status = AudioUnitSetProperty(
         unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
         &device, sizeof(device));
-    if (status != noErr) fail("select Barrot BT10", status);
+    if (status != noErr) fail("select RH-899X", status);
 
     AudioStreamBasicDescription format;
     memset(&format, 0, sizeof(format));
