@@ -77,16 +77,60 @@ mBitsPerChannel    = 16
 - 测试器现在自动识别 DTS/AC3，按实际帧长生成 IEC61937：
   DTS 512/1024/2048 samples，AC3 48 kHz 6144-byte packet。
 
+## 2026-11-26 复盘：真正导致“选编码输出没声音”的两个原因
+
+### 原因一：错误的 128 ms 输出延迟声明（已回滚）
+
+实验版本曾把 `kAudioDevicePropertyLatency` 报成 6144 帧（128 ms），
+并在 `GetZeroTimeStamp` 的 host time 上叠加同样的 128 ms。结果 CoreAudio
+在比特流模式下**完全不再调用 `DoIOOperation`**（`do_calls=0`），
+USB 侧只剩空转（`under≈297600 frames / 6 s`），必然没有声音。
+该改动已整体回滚，`kAudioDevicePropertyLatency` 与 `kAudioDevicePropertySafetyOffset`
+恢复为 0。
+
+### 原因二：cac3 的 `mBytesPerFrame` 必须为 4（正式修复）
+
+原因是 `cac3` 的 ASBD 里 `mBytesPerFrame = 0`。CoreAudio 会因此向客户端
+报告 `bytes/frame = 0`，而 VLC 的 SPDIF 路径用 `AOUT_SPDIF_SIZE(6144) / 1536`
+推导 4 字节/帧。两者不一致时，VLC 每次 IO 回调都拿到 2 倍于真实位流长度的
+缓冲区，drift 被推到阈值边缘，并稳定触发
+`playback way too early (-128000)` → 每次插入 6144 个静音样本（128 ms），
+形成死循环，输出几乎全是静音。
+
+修复只有一处：
+
+```c
+asbd->mBytesPerPacket = 6144;
+asbd->mFramesPerPacket = 1536;
+asbd->mBytesPerFrame = 4;      /* 原来为 0 */
+```
+
+修复后 `physical/virtual format` 均报告 `bytes/frame=4`，VLC 的
+`way too early` 与 `inserting zeroes` 归零。
+
+### 修复后的实测
+
+| 场景 | 结果 |
+| --- | --- |
+| PCM（`coreaudio-device-test` 3 s / 4 s） | `mode=0`，`under=0 over=0 drops=0`，`ring≈1152` |
+| AC3 5.1 直通（`coreaudio-bitstream-test`） | `mode=2`，`under=0 over=0 drops=0` |
+| AC3 5.1 直通（VLC `RH-899X (Encoded Output)` 30 s） | `tx≈3753`（≈125/s），`frames=1,441,152`，`usb_err=0`，`frame_err=0`，`under=0`，`over=0`，`drops=2435`，`dups=131`，`ring≈1152` |
+| VLC 日志 | `way too early/late = 0`，`inserting zeroes = 0` |
+
+USB 形状保持不变：alt 2、端点 `0x01`、`bInterval=4`、每次 Transfer
+`8 × 192 = 1536` 字节、约 125 次/秒，等效 192 kB/s 的 16-bit IEC61937 位流。
+
 ## 下一步
 
 - 将 DTS 测试改为可长期运行的播放器，并验证 Stop/Start、设备重连和错误恢复。
-- 完成一次真实听音：下游解码器切到 PC-USB，播放 DTS 5.1 测试文件。
-- 物理听音通过前，默认输出仍保持内置扬声器，不自动切换 RH-899X。
+- 长时间（≥10 分钟）直通稳定性测试，记录 `drops/dups` 是否随时间增长。
+- 下游解码器需切换到 PC-USB 输入；默认输出仍保持内置扬声器，不自动切换 RH-899X。
 
 ## 代码与测试文件
 
 - `barrot-hal/usbalt2probe.c`：alt 2 frame-list 形状探测。
 - `barrot-hal/coreaudio_bitstream_test.c`：DTS/AC3 → IEC61937 → CoreAudio 实验。
 - `barrot-hal/BarrotAudio.c`：alt 2、非混音 `cac3` 格式和 8×192 提交。
-
-测试日志属于本机内部产物，未纳入公开仓库。
+- `barrot-hal/results/usbalt2_shape_probe.log`
+- `barrot-hal/results/dts_bitstream_10s_final.log`
+- `barrot-hal/results/pcm_regression_final.log`

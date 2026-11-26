@@ -299,7 +299,7 @@ static void setASBDForMode(AudioStreamBasicDescription *asbd, int mode, UInt32 r
     } else {
         asbd->mBytesPerPacket = 6144;
         asbd->mFramesPerPacket = 1536;
-        asbd->mBytesPerFrame = 0;
+        asbd->mBytesPerFrame = 4;
     }
     asbd->mChannelsPerFrame = kChannels;
     asbd->mBitsPerChannel = mode == kFormatFloat32 ? 32 : 16;
