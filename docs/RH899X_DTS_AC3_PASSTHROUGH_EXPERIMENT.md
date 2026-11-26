@@ -66,9 +66,19 @@ mBitsPerChannel    = 16
 192 个 packet-frame；客户端按 `kAudioDevicePropertyBufferFrameSize` 填前
 768 字节，剩余容量不能重复消费。
 
+## AC3 实测
+
+- 用 ffmpeg 将 `51音频6CH声道DTS测试.dts`（48 kHz、5.1）解码，
+  重编码为 48 kHz / 448 kbps AC3。
+- `coreaudio-bitstream-test` 播放 10 秒：2,504 个 callback、480,768 帧，
+  `underruns=0`，`usb_err`/`frame_err` 为 0，设备保持在线。
+- 测试器同时修复了 Ring Buffer 生产端索引少乘声道数的问题；此前的预填
+  数据正确，但主循环写入会错位，可能导致设备端听到损坏的位流。
+- 测试器现在自动识别 DTS/AC3，按实际帧长生成 IEC61937：
+  DTS 512/1024/2048 samples，AC3 48 kHz 6144-byte packet。
+
 ## 下一步
 
-- 用同一测试播放 AC3 文件，验证 `kAudioFormat60958AC3` 对 AC3 burst 的支持。
 - 将 DTS 测试改为可长期运行的播放器，并验证 Stop/Start、设备重连和错误恢复。
 - 完成一次真实听音：下游解码器切到 PC-USB，播放 DTS 5.1 测试文件。
 - 物理听音通过前，默认输出仍保持内置扬声器，不自动切换 RH-899X。
@@ -76,7 +86,7 @@ mBitsPerChannel    = 16
 ## 代码与测试文件
 
 - `barrot-hal/usbalt2probe.c`：alt 2 frame-list 形状探测。
-- `barrot-hal/coreaudio_bitstream_test.c`：DTS → IEC61937 → CoreAudio 实验。
+- `barrot-hal/coreaudio_bitstream_test.c`：DTS/AC3 → IEC61937 → CoreAudio 实验。
 - `barrot-hal/BarrotAudio.c`：alt 2、非混音 `cac3` 格式和 8×192 提交。
 
 测试日志属于本机内部产物，未纳入公开仓库。

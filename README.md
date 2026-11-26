@@ -6,12 +6,15 @@ An AudioServerPlugIn for the **Ranhe RH-899X / `0c1c:3a1d`** USB audio device.
 It exposes RH-899X as a native CoreAudio output device, so it appears in
 Control Center → Sound → Output without BlackHole or a helper process.
 
-## Status — v0.1.0
+## Status — v0.1.1
 
 - **48 kHz / 2ch / 16-bit PCM: stable.**
 - **DTS / AC3 IEC61937 passthrough: validated on the host side.**
   The bitstream reaches USB alt 2 with zero transfer errors; physical
   decoder output still requires a listening test on the downstream device.
+- **AC3 end-to-end host test:** the 30-second DTS 5.1 test file was decoded
+  and re-encoded to 48 kHz / 448 kbps AC3; 10-second playback completed with
+  `underruns=0` and the USB device stayed online.
 - **96 / 192 kHz: not usable.** Both caused the RH-899X firmware to stop
   responding and macOS to disable the USB port. Only 48 kHz is advertised.
 - **24-bit: not supported by this USB input.** The UAC2 descriptors declare
@@ -88,6 +91,10 @@ CoreAudio client
 - IEC61937: non-mixable `cac3`, USB alt 2, 8 × 192 bytes per transfer.
 - The real-time path performs no allocation, logging, or USB I/O; a separate
   worker thread owns the USB endpoint.
+
+The bitstream test tool auto-detects DTS and AC3, supports DTS 512/1024/2048
+sample bursts and AC3 48 kHz frames, and writes IEC61937 bursts of the correct
+dynamic packet size.
 
 ## Limitations
 

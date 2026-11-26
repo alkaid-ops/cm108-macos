@@ -8,11 +8,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#define kRingFrames 32768u
+#define kRingFrames 65536u
 #define kRingMask (kRingFrames - 1u)
 #define kRate 48000u
 #define kChannels 2u
-#define kDtsBlockBytes 2048u
+#define kMaxPacketBytes 8192u
 
 typedef struct {
     int16_t data[kRingFrames * kChannels];
@@ -23,8 +23,7 @@ typedef struct {
 typedef struct {
     Ring ring;
     FILE *input;
-    atomic_bool running;
-    uint64_t underruns;
+    atomic_ullong underruns;
     atomic_ullong ioCalls;
     atomic_ullong ioFrames;
     atomic_ullong ioCopied;
@@ -33,6 +32,13 @@ typedef struct {
     atomic_uint firstChannels;
     UInt32 framesPerCallback;
 } TestState;
+
+static const uint16_t kAc3Words48k[38] = {
+    64, 64, 80, 80, 96, 96, 112, 112, 128, 128, 160, 160,
+    192, 192, 224, 224, 256, 256, 320, 320, 384, 384,
+    448, 448, 512, 512, 640, 640, 768, 768, 896, 896,
+    1024, 1024, 1152, 1152, 1280, 1280
+};
 
 static void fail(const char *what, OSStatus status) {
     fprintf(stderr, "%s failed: %d (0x%x)\n", what, (int)status, (unsigned)status);
@@ -84,35 +90,124 @@ static AudioStreamID firstOutputStream(AudioDeviceID device) {
     return stream;
 }
 
-static OSStatus readBlock(TestState *s, int16_t *dst) {
-    uint8_t frame[kDtsBlockBytes];
-    if (fread(frame, 1, sizeof(frame), s->input) != sizeof(frame)) return 1;
-    if (memcmp(frame, "\x7f\xfe\x80\x01", 4) != 0) return 2;
+static uint16_t rd_be16(const uint8_t *p) {
+    return (uint16_t)((p[0] << 8) | p[1]);
+}
 
-    unsigned blocks = (((frame[4] << 8) | frame[5]) >> 2) & 0x7f;
-    unsigned coreSize = (((frame[5] << 16) | (frame[6] << 8) | frame[7]) >> 4) & 0x3fff;
-    blocks++;
-    coreSize++;
-    unsigned samples = blocks << 5;
-    if (samples != 512 && samples != 1024 && samples != 2048) return 3;
-    if (coreSize > kDtsBlockBytes - 8) return 4;
-    unsigned type = samples == 512 ? 0x0B : (samples == 1024 ? 0x0C : 0x0D);
+static uint16_t rd_le16(const uint8_t *p) {
+    return (uint16_t)((p[1] << 8) | p[0]);
+}
 
-    uint8_t packet[kDtsBlockBytes];
-    memset(packet, 0, sizeof(packet));
-    packet[0] = 0x72; packet[1] = 0xF8;       /* Pa */
-    packet[2] = 0x1F; packet[3] = 0x4E;       /* Pb */
-    packet[4] = type; packet[5] = 0x00;       /* Pc */
-    unsigned lengthBits = coreSize << 3;
-    packet[6] = lengthBits & 0xff;
-    packet[7] = (lengthBits >> 8) & 0xff;     /* Pd */
+static uint32_t rd_be24(const uint8_t *p) {
+    return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
+}
 
-    for (unsigned i = 0; i < coreSize; i += 2) {
-        packet[8 + i] = frame[i + 1];
-        packet[9 + i] = frame[i];
+static uint32_t rd_le24(const uint8_t *p) {
+    return ((uint32_t)p[2] << 16) | ((uint32_t)p[1] << 8) | p[0];
+}
+
+static int isSync(const uint8_t *p, int *isDts, int *swap) {
+    if (p[0] == 0x0b && p[1] == 0x77) {
+        *isDts = 0;
+        *swap = 1;
+        return 1;
     }
-    memcpy(dst, packet, sizeof(packet));
+    if (memcmp(p, "\x7f\xfe\x80\x01", 4) == 0) {
+        *isDts = 1;
+        *swap = 1;
+        return 1;
+    }
+    if (memcmp(p, "\xfe\x7f\x01\x80", 4) == 0) {
+        *isDts = 1;
+        *swap = 0;
+        return 1;
+    }
     return 0;
+}
+
+static int findSync(TestState *s, uint8_t *frame, int *isDts, int *swap) {
+    if (fread(frame, 1, 4, s->input) != 4) return 1;
+    for (unsigned tries = 0; tries < kMaxPacketBytes; tries++) {
+        if (isSync(frame, isDts, swap)) return 0;
+        memmove(frame, frame + 1, 3);
+        if (fread(frame + 3, 1, 1, s->input) != 1) return 1;
+    }
+    return 2;
+}
+
+static int readBlock(TestState *s, uint8_t *pkt, unsigned *outFrames, const char **fmt) {
+    uint8_t frame[kMaxPacketBytes];
+    int isDts = 0;
+    int swap = 0;
+    if (findSync(s, frame, &isDts, &swap)) return 1;
+    if (fread(frame + 4, 1, 4, s->input) != 4) return 1;
+
+    unsigned frameBytes = 0;
+    unsigned pktBytes = 0;
+    unsigned dataType = 0;
+
+    if (!isDts) {
+        unsigned fscod = (frame[4] >> 6) & 0x3;
+        unsigned frmsizecod = frame[4] & 0x3f;
+        if (fscod != 0 || frmsizecod >= 38) {
+            fprintf(stderr, "AC3 frame is not 48 kHz or has bad frmsizecod\n");
+            return 3;
+        }
+        frameBytes = kAc3Words48k[frmsizecod] * 2;
+        if (frameBytes < 8 || frameBytes > kMaxPacketBytes) return 3;
+        if (fread(frame + 8, 1, frameBytes - 8, s->input) != frameBytes - 8) return 1;
+        pktBytes = 6144;
+        dataType = 0x01 | ((frame[5] & 0x7) << 8);
+        *fmt = "AC3";
+    } else {
+        uint16_t b16 = swap ? rd_be16(frame + 4) : rd_le16(frame + 4);
+        uint32_t b24 = swap ? rd_be24(frame + 5) : rd_le24(frame + 5);
+        unsigned blocks = ((b16 >> 2) & 0x7f) + 1;
+        unsigned coreSize = ((b24 >> 4) & 0x3fff) + 1;
+        unsigned samples = blocks << 5;
+        if (samples != 512 && samples != 1024 && samples != 2048) return 3;
+        if (coreSize < 8 || coreSize > kMaxPacketBytes) return 3;
+        if (fread(frame + 8, 1, coreSize - 8, s->input) != coreSize - 8) return 1;
+        frameBytes = coreSize;
+        pktBytes = samples * 4;
+        dataType = samples == 512 ? 0x0b : (samples == 1024 ? 0x0c : 0x0d);
+        *fmt = "DTS";
+    }
+
+    if (pktBytes < 8 || pktBytes > kMaxPacketBytes) return 3;
+    memset(pkt, 0, pktBytes);
+    pkt[0] = 0x72; pkt[1] = 0xf8;              /* Pa */
+    pkt[2] = 0x1f; pkt[3] = 0x4e;              /* Pb */
+    pkt[4] = dataType & 0xff;                  /* Pc */
+    pkt[5] = (dataType >> 8) & 0xff;
+    unsigned lengthBits = ((frameBytes + 1) & ~1u) << 3;
+    pkt[6] = lengthBits & 0xff;                /* Pd */
+    pkt[7] = (lengthBits >> 8) & 0xff;
+
+    for (unsigned i = 0; i < frameBytes; i += 2) {
+        unsigned j = i + 1 < frameBytes ? i + 1 : i;
+        if (swap) {
+            pkt[8 + i] = frame[j];
+            pkt[9 + i] = frame[i];
+        } else {
+            pkt[8 + i] = frame[i];
+            pkt[9 + i] = frame[j];
+        }
+    }
+    *outFrames = pktBytes / 4;
+    return 0;
+}
+
+static void ringWrite(TestState *s, const uint8_t *pkt, unsigned frames) {
+    unsigned wr = atomic_load(&s->ring.writeIndex);
+    unsigned idx = wr & kRingMask;
+    unsigned first = frames;
+    if (idx + first > kRingFrames) first = kRingFrames - idx;
+    memcpy(&s->ring.data[idx * kChannels], pkt, first * kChannels * sizeof(int16_t));
+    if (first < frames)
+        memcpy(&s->ring.data[0], pkt + first * kChannels * sizeof(int16_t),
+               (frames - first) * kChannels * sizeof(int16_t));
+    atomic_store(&s->ring.writeIndex, wr + frames);
 }
 
 static OSStatus bitstreamIOProc(AudioObjectID device, const AudioTimeStamp *now,
@@ -142,12 +237,13 @@ static OSStatus bitstreamIOProc(AudioObjectID device, const AudioTimeStamp *now,
     atomic_fetch_add(&s->ioCopied, copy);
     for (unsigned i = 0; i < copy; i++) {
         unsigned idx = (rd + i) & kRingMask;
-        dst[i * 2] = s->ring.data[idx * 2];
-        dst[i * 2 + 1] = s->ring.data[idx * 2 + 1];
+        dst[i * kChannels] = s->ring.data[idx * kChannels];
+        dst[i * kChannels + 1] = s->ring.data[idx * kChannels + 1];
     }
     if (copy < frames) {
-        memset(dst + copy * 2, 0, (frames - copy) * 2 * sizeof(int16_t));
-        s->underruns += frames - copy;
+        memset(dst + copy * kChannels, 0,
+               (frames - copy) * kChannels * sizeof(int16_t));
+        atomic_fetch_add(&s->underruns, frames - copy);
     }
     atomic_store(&s->ring.readIndex, rd + copy);
     return noErr;
@@ -155,7 +251,7 @@ static OSStatus bitstreamIOProc(AudioObjectID device, const AudioTimeStamp *now,
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "usage: %s file.dts [seconds]\n", argv[0]);
+        fprintf(stderr, "usage: %s file.dts|file.ac3 [seconds]\n", argv[0]);
         return 2;
     }
     double seconds = argc > 2 ? atof(argv[2]) : 5.0;
@@ -163,7 +259,7 @@ int main(int argc, char **argv) {
     memset(&state, 0, sizeof(state));
     atomic_init(&state.ring.writeIndex, 0);
     atomic_init(&state.ring.readIndex, 0);
-    atomic_init(&state.running, true);
+    atomic_init(&state.underruns, 0);
     atomic_init(&state.ioCalls, 0);
     atomic_init(&state.ioFrames, 0);
     atomic_init(&state.ioCopied, 0);
@@ -264,12 +360,18 @@ int main(int argc, char **argv) {
     printf("buffer frames: requested=%u actual=%u\n", bufferFrames, actualBufferFrames);
     state.framesPerCallback = actualBufferFrames ? actualBufferFrames : 192;
 
+    const char *fmtName = "?";
+    uint8_t packet[kMaxPacketBytes];
+    unsigned frames = 0;
     for (int i = 0; i < 4; i++) {
-        int16_t packet[kDtsBlockBytes / 4 * 2];
-        if (readBlock(&state, packet) != 0) return 3;
-        memcpy(&state.ring.data[i * (kDtsBlockBytes / 4) * 2], packet, kDtsBlockBytes);
-        atomic_fetch_add(&state.ring.writeIndex, kDtsBlockBytes / 4);
+        int r = readBlock(&state, packet, &frames, &fmtName);
+        if (r != 0) {
+            fprintf(stderr, "cannot read first frame (%d)\n", r);
+            return 3;
+        }
+        ringWrite(&state, packet, frames);
     }
+    printf("input format: %s, packet frames=%u\n", fmtName, frames);
 
     AudioDeviceIOProcID proc = NULL;
     status = AudioDeviceCreateIOProcID(device, bitstreamIOProc, &state, &proc);
@@ -278,27 +380,25 @@ int main(int argc, char **argv) {
     if (status != noErr) fail("start device", status);
 
     printf("bitstream started: %.1f s, underruns=%llu\n", seconds,
-           (unsigned long long)state.underruns);
+           (unsigned long long)atomic_load(&state.underruns));
     mach_timebase_info_data_t tb;
     mach_timebase_info(&tb);
-    uint64_t blockTicks = (uint64_t)((512.0 * 1e9 / kRate) * tb.denom / tb.numer);
     uint64_t next = mach_absolute_time();
     uint64_t end = next + (uint64_t)(seconds * 1e9 * tb.denom / tb.numer);
     while (mach_absolute_time() < end) {
-        int16_t packet[kDtsBlockBytes / 4 * 2];
-        if (readBlock(&state, packet) != 0) {
+        int r = readBlock(&state, packet, &frames, &fmtName);
+        if (r != 0) {
             rewind(state.input);
-            if (readBlock(&state, packet) != 0) break;
+            if (readBlock(&state, packet, &frames, &fmtName) != 0) break;
         }
         unsigned wr = atomic_load(&state.ring.writeIndex);
         unsigned rd = atomic_load(&state.ring.readIndex);
-        while (wr - rd > kRingFrames - (kDtsBlockBytes / 4)) {
+        while (wr - rd > kRingFrames - frames) {
             usleep(2000);
             rd = atomic_load(&state.ring.readIndex);
         }
-        memcpy(&state.ring.data[wr & kRingMask], packet, kDtsBlockBytes);
-        atomic_store(&state.ring.writeIndex, wr + kDtsBlockBytes / 4);
-        next += blockTicks;
+        ringWrite(&state, packet, frames);
+        next += (uint64_t)((double)frames * 1e9 / kRate * tb.denom / tb.numer);
         mach_wait_until(next);
     }
 
@@ -310,7 +410,7 @@ int main(int argc, char **argv) {
     AudioObjectSetPropertyData(device, &ha, 0, NULL, sizeof(oldHog), &oldHog);
     printf("bitstream stopped: underruns=%llu calls=%llu frames=%llu copied=%llu "
            "w=%u r=%u\n",
-           (unsigned long long)state.underruns,
+           (unsigned long long)atomic_load(&state.underruns),
            (unsigned long long)atomic_load(&state.ioCalls),
            (unsigned long long)atomic_load(&state.ioFrames),
            (unsigned long long)atomic_load(&state.ioCopied),
@@ -319,5 +419,5 @@ int main(int argc, char **argv) {
            atomic_load(&state.firstBuffers), atomic_load(&state.firstBytes),
            atomic_load(&state.firstChannels));
     fclose(state.input);
-    return state.underruns ? 4 : 0;
+    return atomic_load(&state.underruns) ? 4 : 0;
 }
