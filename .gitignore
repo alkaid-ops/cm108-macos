@@ -1,0 +1,11 @@
+.DS_Store
+barrot-hal/build/
+barrot-hal/results/
+barrot-hal/*.dSYM/
+barrot-hal/selftest
+barrot-hal/coreaudio-device-test
+barrot-hal/coreaudio-bitstream-test
+barrot-hal/usbalt2probe
+barrot-hal/BarrotUSB
+*.o
+*.driver
