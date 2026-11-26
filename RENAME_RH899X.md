@@ -54,19 +54,22 @@ legacy migration source.
 - Added legacy migration to `install.sh`: existing `RH899X.driver` and
   `BarrotBT10.driver` bundles are moved to timestamped backups, and rollback
   restores the previous bundle.
+- Renamed the GitHub repository to
+  `https://github.com/alkaid-ops/cm108-macos` and committed/pushed the rename.
+- The target machine built and installed `RH899X.driver`; the legacy bundle
+  remains at
+  `/Library/Audio/Plug-Ins/HAL/BarrotBT10.driver.backup-20261126-111818`.
+- CoreAudio enumerates `RH-899X` (`RH899X-0c1c-3a1d`); the built-in speaker
+  remains present, and a 48 kHz PCM Start/Stop test passed.
+- `v0.1.0` remains unchanged and no new release was created.
 
 ## Pending
 
-- Build on the target machine with `cd barrot-hal && ./build.sh`.
-- Install from an interactive administrator session with
-  `cd barrot-hal && ./install.sh`.
-- Verify CoreAudio enumerates `RH899X-0c1c-3a1d`, the built-in speaker remains
-  present, and the legacy bundle backup still exists.
-- Run PCM and bitstream regression tests after installation.
+- Re-run DTS/AC3 playback after installation if a fresh bitstream regression
+  is required.
 - The v0.1.0 tag and release notes are unchanged.
 
 ## Risk
 
-- The installed legacy HAL remains active until the migration install runs.
 - Any existing process or script that hard-codes the old UID must use
   `RH899X-0c1c-3a1d`.
