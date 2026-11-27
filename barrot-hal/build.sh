@@ -6,8 +6,18 @@ OUT="build/RH899X.driver"
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
 cp RH899X.plist "$OUT/Contents/Info.plist"
 
+TUNE_FLAGS=()
+[[ -n "${RH899X_BYTES_PER_FRAME:-}" ]] && TUNE_FLAGS+=("-DRH899X_BYTES_PER_FRAME=${RH899X_BYTES_PER_FRAME}u")
+[[ -n "${RH899X_BUFFER_FRAMES:-}" ]] && TUNE_FLAGS+=("-DRH899X_BUFFER_FRAMES=${RH899X_BUFFER_FRAMES}u")
+[[ -n "${RH899X_LATENCY_FRAMES:-}" ]] && TUNE_FLAGS+=("-DRH899X_LATENCY_FRAMES=${RH899X_LATENCY_FRAMES}u")
+[[ -n "${RH899X_SAFETY_FRAMES:-}" ]] && TUNE_FLAGS+=("-DRH899X_SAFETY_FRAMES=${RH899X_SAFETY_FRAMES}u")
+if (( ${#TUNE_FLAGS} )); then
+  echo "tuning: ${TUNE_FLAGS[*]}"
+fi
+
 clang -std=c11 -bundle -fPIC -O2 -Wall \
   -Wno-deprecated-declarations -pthread \
+  "${TUNE_FLAGS[@]}" \
   -o "$OUT/Contents/MacOS/RH899X" BarrotAudio.c \
   -framework CoreAudio -framework CoreFoundation -framework IOKit
 

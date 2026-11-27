@@ -45,13 +45,27 @@ static const UInt32 kSupportedRates[] = { 48000u, 96000u, 192000u };
 /* One IOUSBIsocFrame element is one 125 us microframe. The packet size is
  * rate dependent: 6/12/24 stereo frames at 48/96/192 kHz. */
 #define kMicroframes 64u
-#define kBitstreamIntervalMicroframes 8u
-#define kBitstreamPacketBytes 192u
+#define kBitstreamMicroframes 8u   /* 8 microframes = 1 ms per transfer */
 #define kSlots 4
 #define kMaxAhead 8
 
 /* Keep the ring at the same *time* depth (about 21 ms) at every rate. */
 #define kLevelFrames(transferFrames, n) ((UInt64)(transferFrames) * (n))
+
+/* Tuning knobs used by tools/autotune.py. Crank them with -D on the compile
+ * line; the defaults below are the shipped values. */
+#ifndef RH899X_BYTES_PER_FRAME
+#define RH899X_BYTES_PER_FRAME 0u
+#endif
+#ifndef RH899X_BUFFER_FRAMES
+#define RH899X_BUFFER_FRAMES 512u
+#endif
+#ifndef RH899X_LATENCY_FRAMES
+#define RH899X_LATENCY_FRAMES 0u
+#endif
+#ifndef RH899X_SAFETY_FRAMES
+#define RH899X_SAFETY_FRAMES 0u
+#endif
 
 #define kRanheStatsSelector 'rhst'
 
@@ -299,7 +313,7 @@ static void setASBDForMode(AudioStreamBasicDescription *asbd, int mode, UInt32 r
     } else {
         asbd->mBytesPerPacket = 6144;
         asbd->mFramesPerPacket = 1536;
-        asbd->mBytesPerFrame = 4;
+        asbd->mBytesPerFrame = RH899X_BYTES_PER_FRAME;
     }
     asbd->mChannelsPerFrame = kChannels;
     asbd->mBitsPerChannel = mode == kFormatFloat32 ? 32 : 16;
@@ -794,7 +808,7 @@ void *Ranhe_CreatePlugin(CFAllocatorRef allocator, CFUUIDRef typeID) {
     if (!d) return NULL;
     d->vtable = &gVTable;
     d->refCount = 1;
-    d->bufferFrames = 512;
+    d->bufferFrames = RH899X_BUFFER_FRAMES;
     atomic_init(&d->rate, kDefaultRate);
     atomic_init(&d->running, false);
     atomic_init(&d->threadStarted, false);
@@ -940,8 +954,8 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
         (*ctx->itf)->GetBusFrameNumber(ctx->itf, &cur, &at);
         if (nextStart == 0 || nextStart < cur + 2) nextStart = cur + 4;
         if (isBitstream(d))
-            nextStart = (nextStart + kBitstreamIntervalMicroframes - 1) &
-                        ~(UInt64)(kBitstreamIntervalMicroframes - 1);
+            nextStart = (nextStart + kBitstreamMicroframes - 1) &
+                        ~(UInt64)(kBitstreamMicroframes - 1);
         if (nextStart < lastEnd) nextStart = lastEnd;
 
         while (nextStart <= cur + kMaxAhead) {
@@ -953,14 +967,18 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
 
             unsigned char *out = slots[s].buf;
             IOUSBIsocFrame *fl = slots[s].frames;
-            UInt32 numFrames = isBitstream(d) ? kBitstreamIntervalMicroframes : kMicroframes;
+            UInt32 numFrames = kMicroframes;
             if (isBitstream(d)) {
+                numFrames = kBitstreamMicroframes;
                 UInt32 got = bitstreamPop(d, words, transferFrames);
                 if (got < transferFrames)
                     memset(out + got * 4, 0, (transferFrames - got) * 4);
                 if (got) memcpy(out, words, got * 4);
+                /* Same even shape as PCM: 24 bytes every 125 us. A single
+                 * 1536-byte burst per 8 ms leaves 7 ms silent and makes the
+                 * downstream decoder click ("telegraph" noise). */
                 for (UInt32 m = 0; m < numFrames; m++) {
-                    fl[m].frReqCount = kBitstreamPacketBytes;
+                    fl[m].frReqCount = 192;
                     fl[m].frStatus = 0;
                     fl[m].frActCount = 0;
                 }
@@ -1428,8 +1446,10 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef inDriver,
             *(UInt32 *)outData = 1;
             break;
         case kAudioDevicePropertyLatency:
+            *(UInt32 *)outData = isBitstream(d) ? RH899X_LATENCY_FRAMES : 0;
+            break;
         case kAudioDevicePropertySafetyOffset:
-            *(UInt32 *)outData = 0;
+            *(UInt32 *)outData = isBitstream(d) ? RH899X_SAFETY_FRAMES : 0;
             break;
         case kAudioDevicePropertyZeroTimeStampPeriod:
             *(UInt32 *)outData = d->bufferFrames;

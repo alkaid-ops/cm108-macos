@@ -6,17 +6,22 @@ An AudioServerPlugIn for the **Ranhe RH-899X / `0c1c:3a1d`** USB audio device.
 It exposes RH-899X as a native CoreAudio output device, so it appears in
 Control Center → Sound → Output without BlackHole or a helper process.
 
-## Status — v0.1.2
+## Status — v0.1.3
 
 - **48 kHz / 2ch / 16-bit PCM: stable.**
 - **DTS / AC3 IEC61937 passthrough: working, including VLC.**
   `RH-899X (Encoded Output)` in VLC 3.0.24 plays 5.1 AC3 with zero
   `way too early` / `inserting zeroes` warnings and `under=0 over=0`.
   Physical output was confirmed by ear on the downstream decoder.
-- **v0.1.2 fix:** the `cac3` ASBD must declare `mBytesPerFrame = 4`
-  (it was `0`). With `0`, CoreAudio reported `bytes/frame = 0`, VLC's SPDIF
-  timing model fell into a 128 ms silence-insertion limit cycle, and the
-  output was effectively silent even though USB transfers succeeded.
+- **v0.1.3 fixes (important):**
+  1. Bitstream transfers must be aligned to an **8-frame boundary**
+     (`nextStart &= ~7`). Without it the alt-2 service points shift relative
+     to the transfer and the downstream decoder hears a "telegraph" click.
+  2. `mBytesPerFrame` default is back to `0` (the verified-working value).
+- **Device state:** after a USB re-plug the RH-899X loses its S/PDIF output
+  state. PCM keeps working but bitstream crackles until the device is
+  **power-cycled** (unplug power, not just USB). This is a device behaviour,
+  not a driver bug.
 - **AC3 end-to-end host test:** the 30-second DTS 5.1 test file was decoded
   and re-encoded to 48 kHz / 448 kbps AC3; 10-second playback completed with
   `underruns=0` and the USB device stayed online.
