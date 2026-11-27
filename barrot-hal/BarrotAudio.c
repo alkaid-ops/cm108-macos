@@ -46,8 +46,8 @@ static const UInt32 kSupportedRates[] = { 48000u, 96000u, 192000u };
  * rate dependent: 6/12/24 stereo frames at 48/96/192 kHz. */
 #define kMicroframes 64u
 #define kBitstreamMicroframes 8u   /* 8 microframes = 1 ms per transfer */
-#define kSlots 4
-#define kMaxAhead 8
+#define kSlots 8
+#define kMaxAhead 32
 
 /* Keep the ring at the same *time* depth (about 21 ms) at every rate. */
 #define kLevelFrames(transferFrames, n) ((UInt64)(transferFrames) * (n))

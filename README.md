@@ -6,13 +6,18 @@ An AudioServerPlugIn for the **Ranhe RH-899X / `0c1c:3a1d`** USB audio device.
 It exposes RH-899X as a native CoreAudio output device, so it appears in
 Control Center → Sound → Output without BlackHole or a helper process.
 
-## Status — v0.1.3
+## Status — v0.1.4
 
 - **48 kHz / 2ch / 16-bit PCM: stable.**
 - **DTS / AC3 IEC61937 passthrough: working, including VLC.**
   `RH-899X (Encoded Output)` in VLC 3.0.24 plays 5.1 AC3 with zero
   `way too early` / `inserting zeroes` warnings and `under=0 over=0`.
   Physical output was confirmed by ear on the downstream decoder.
+- **v0.1.4 fix:** USB submission headroom increased (`kSlots 4→8`,
+  `kMaxAhead 8→32`). With the old window the scheduler fell behind, only
+  ~121 of 125 transfers/s went out and the level corrector discarded ~3% of
+  the audio (`drops≈32k per 20 s`) — audible as stutter/crackle.
+  Now: `tx=2495/20 s` (125/s), `drops=0`, `under=0`.
 - **v0.1.3 fixes (important):**
   1. Bitstream transfers must be aligned to an **8-frame boundary**
      (`nextStart &= ~7`). Without it the alt-2 service points shift relative
