@@ -135,3 +135,22 @@ Status: **PASS** (2026-11-28, user listening confirmation).
 - The user confirmed the 6-second AC3 excerpt plays cleanly with no
   USB-unplug-style pop.
 - PCM device stayed Float32 / 8 B per frame / 192 frames throughout.
+
+## VLC device list cleanup
+
+The PCM device used to advertise `cac3` as well, which made VLC list a
+broken `RH-899X (Encoded Output)` entry (the PCM device keeps the
+8 B/frame buffer). That format and the ability to set it were removed
+from the PCM device functions; PCM playback is unchanged.
+
+VLC now lists:
+
+| Entry | Meaning |
+| --- | --- |
+| `RH-899X` | PCM / decoded audio |
+| `RH-899X Bitstream` | bitstream device in analog mode; no PCM format, not usable |
+| `RH-899X Bitstream (Encoded Output)` | the working AC3/DTS passthrough path |
+
+The middle entry is unavoidable in VLC 3, which lists every output
+device in analog mode in addition to its encoded variant. Use the
+`(Encoded Output)` entry for bitstream.

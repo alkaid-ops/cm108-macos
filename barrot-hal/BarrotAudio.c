@@ -687,7 +687,7 @@ static OSStatus StopIO(AudioServerPlugInDriverRef inDriver, AudioObjectID inDevi
                        UInt32 inClientID) {
     Driver *d = (Driver *)inDriver;
     halLog("StopIO client=%u mode=%d tx=%llu frames=%llu usb_err=%llu frame_err=%llu "
-           "under=%llu over=%llu drops=%llu dups=%llu ring=%llu",
+           "under=%llu over=%llu drops=%llu dups=%llu ring=%llu head=%llu iof=%u",
            inClientID,
            atomic_load(&d->formatMode),
            (unsigned long long)atomic_load(&d->usbTransfers),
@@ -698,7 +698,9 @@ static OSStatus StopIO(AudioServerPlugInDriverRef inDriver, AudioObjectID inDevi
            (unsigned long long)atomic_load(&d->overruns),
            (unsigned long long)atomic_load(&d->drops),
            (unsigned long long)atomic_load(&d->dups),
-           (unsigned long long)(isBitstream(d) ? bitstreamLevel(d) : ringLevel(d)));
+           (unsigned long long)(isBitstream(d) ? bitstreamLevel(d) : ringLevel(d)),
+           (unsigned long long)atomic_load(isBitstream(d) ? &d->bitstreamHead : &d->head),
+           (unsigned)atomic_load(&d->ioFrameSize));
     (void)inClientID;
     pthread_mutex_lock(&d->lifecycleLock);
     if (d->ioClients > 0) d->ioClients--;
@@ -1497,7 +1499,7 @@ static OSStatus GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
         case kAudioStreamPropertyAvailableVirtualFormats:
         case kAudioStreamPropertyAvailablePhysicalFormats:
             *outDataSize = (inObjectID == kBsStreamID
-                                ? 1 : (2 * kAdvertisedRateCount + 1)) *
+                                ? 1 : 2 * kAdvertisedRateCount) *
                            sizeof(AudioStreamRangedDescription);
             return noErr;
         case kRanheStatsSelector:
@@ -1748,10 +1750,6 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef inDriver,
                     n++;
                 }
             }
-            setASBDForMode(&r[n].mFormat, kFormat60958AC3, kBitstreamRate);
-            r[n].mSampleRateRange.mMinimum = kBitstreamRate;
-            r[n].mSampleRateRange.mMaximum = kBitstreamRate;
-            n++;
             break;
         }
         case kAudioStreamPropertyIsActive:
@@ -1867,10 +1865,14 @@ static OSStatus SetPropertyData(AudioServerPlugInDriverRef inDriver,
             inAddress->mSelector == kAudioStreamPropertyPhysicalFormat) {
             if (inDataSize < sizeof(AudioStreamBasicDescription))
                 return kAudioHardwareBadPropertySizeError;
-            if (inObjectID == kBsStreamID &&
-                ((const AudioStreamBasicDescription *)inData)->mFormatID
-                    != kAudioFormat60958AC3)
-                return kAudioDeviceUnsupportedFormatError;
+            {
+                AudioFormatID fid =
+                    ((const AudioStreamBasicDescription *)inData)->mFormatID;
+                if (inObjectID == kBsStreamID && fid != kAudioFormat60958AC3)
+                    return kAudioDeviceUnsupportedFormatError;
+                if (inObjectID == kStreamID && fid == kAudioFormat60958AC3)
+                    return kAudioDeviceUnsupportedFormatError;
+            }
             return applyStreamFormat(d, inObjectID,
                                      (const AudioStreamBasicDescription *)inData);
         }
