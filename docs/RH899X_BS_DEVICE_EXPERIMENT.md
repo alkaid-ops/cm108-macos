@@ -154,3 +154,24 @@ VLC now lists:
 The middle entry is unavoidable in VLC 3, which lists every output
 device in analog mode in addition to its encoded variant. Use the
 `(Encoded Output)` entry for bitstream.
+
+## Occasional stutter fix
+
+A 227 s music session showed `under=10368` (~216 ms, 0.095%) with
+`drops=0 dups=0 usb_err=0`. The 80 ms prefill only filled two
+1536-frame callbacks, so the steady ring level was ~64 ms; any CoreAudio
+scheduling hiccup longer than that drained it.
+
+The prefill now waits for 6 IO buffers (~192 ms, 300 ms cap) and the
+water marks are `6x / 8x / 3x ioFrameSize`.
+
+40 s verification:
+
+```
+prefill bitstream=1 frames=9216 wait_ms=190.0
+StopIO mode=2 tx=4991 frames=1916544 usb_err=0 frame_err=0
+        under=0 over=0 drops=0 dups=0 ring=6528
+```
+
+Cost: about 130 ms extra start latency on the bitstream path; PCM is
+unchanged.
