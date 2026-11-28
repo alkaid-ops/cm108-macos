@@ -1099,9 +1099,9 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
          * ~10% of the stream. */
         UInt32 ioFrames = atomic_load(&d->ioFrameSize);
         if (ioFrames < 128 || ioFrames > 8192) ioFrames = 512;
-        levelTarget = (UInt64)ioFrames * 6;
-        levelHigh = (UInt64)ioFrames * 8;
-        levelLow = (UInt64)ioFrames * 3;
+        levelTarget = (UInt64)ioFrames * 16;
+        levelHigh = (UInt64)ioFrames * 20;
+        levelLow = (UInt64)ioFrames * 8;
     } else {
         levelTarget = kLevelFrames(transferFrames, 8) / 3;
         levelHigh = kLevelFrames(transferFrames, 4);
@@ -1115,14 +1115,14 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
 
     UInt64 prefillStart = mach_absolute_time();
     UInt64 prefillDeadline = prefillStart +
-        nanosToHostTicks(isBitstream(d) ? 300000000ULL : 80000000ULL);
+        nanosToHostTicks(isBitstream(d) ? 700000000ULL : 80000000ULL);
     while (atomic_load(&d->running)) {
         if (isBitstream(d)) {
             UInt32 io = atomic_load(&d->ioFrameSize);
             if (io >= 512 && io <= 8192) {
-                levelTarget = (UInt64)io * 6;
-                levelHigh = (UInt64)io * 8;
-                levelLow = (UInt64)io * 3;
+                levelTarget = (UInt64)io * 16;
+                levelHigh = (UInt64)io * 20;
+                levelLow = (UInt64)io * 8;
             }
         }
         UInt64 filled = isBitstream(d) ? bitstreamLevel(d) : ringLevel(d);
@@ -1141,9 +1141,9 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
              * startup cannot keep the low mark below one client buffer. */
             UInt32 io = atomic_load(&d->ioFrameSize);
             if (io >= 128 && io <= 8192) {
-                levelTarget = (UInt64)io * 6;
-                levelHigh = (UInt64)io * 8;
-                levelLow = (UInt64)io * 3;
+                levelTarget = (UInt64)io * 16;
+                levelHigh = (UInt64)io * 20;
+                levelLow = (UInt64)io * 8;
             }
         }
         UInt64 cur = 0;

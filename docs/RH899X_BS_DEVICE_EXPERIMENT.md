@@ -187,3 +187,17 @@ Long-run comparison after the change:
 `drops`, `dups`, `over` and USB errors stay 0. The user reports the
 stutter is "much better"; remaining events are rare (one short gap per
 few minutes).
+
+## 512 ms prefill (user-approved latency)
+
+Water marks are now `16x / 20x / 8x ioFrameSize`; the bitstream prefill
+waits for 16 buffers (~512 ms, 700 ms cap).
+
+```
+prefill bitstream=1 frames=24576 wait_ms=507.2
+StopIO mode=2 tx=4950 frames=1900800 usb_err=0 frame_err=0
+        under=0 over=0 drops=0 dups=0 ring=21888
+```
+
+Bitstream start latency is about 512 ms. PCM keeps the 80 ms prefill
+and is unchanged.
