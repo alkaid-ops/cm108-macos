@@ -9,6 +9,8 @@
 CODESIGN_IDENTITY="Apple Development: ..." ./build.sh   # 系统加载必需 Apple 证书
 CODESIGN_IDENTITY="Developer ID Application: ..." ./build.sh
 ```
+产物是 `arm64 + x86_64` 通用二进制，`build.sh` 会用 `lipo -info` 打印
+实际架构；Intel 与 Apple Silicon 共用同一个 bundle。
 
 系统加载要求 Apple 签发的身份。免费 Apple ID 在 Xcode 中生成的
 `Apple Development` 证书即可用于本机测试；首次构建前确认
@@ -68,6 +70,7 @@ Developer ID Application，并执行 `codesign --verify --strict --deep`。
 ## 证据
 
 - `../docs/RH899X_MACOS_NATIVE_AUDIO_DEVICE_AUDIT.md`
+- `../docs/RH899X_APPLE_DEVELOPMENT_SIGNING_AUDIT.md`
 - `../docs/RH899X_MACOS_NATIVE_AUDIO_DEVICE_IMPLEMENTATION.md`
 - `../docs/RH899X_MACOS_NATIVE_AUDIO_DEVICE_TEST.md`
 - `../docs/RH899X_HAL_LOAD_TEST.md`

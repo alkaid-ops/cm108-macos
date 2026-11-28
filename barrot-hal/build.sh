@@ -6,6 +6,10 @@ OUT="build/RH899X.driver"
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
 cp RH899X.plist "$OUT/Contents/Info.plist"
 
+# Universal binary: Apple Silicon + Intel.  The HAL is loaded into the
+# coreaudiod process, so the slice must match the host architecture.
+ARCH_FLAGS=(-arch arm64 -arch x86_64)
+
 TUNE_FLAGS=()
 [[ -n "${RH899X_BYTES_PER_FRAME:-}" ]] && TUNE_FLAGS+=("-DRH899X_BYTES_PER_FRAME=${RH899X_BYTES_PER_FRAME}u")
 [[ -n "${RH899X_BUFFER_FRAMES:-}" ]] && TUNE_FLAGS+=("-DRH899X_BUFFER_FRAMES=${RH899X_BUFFER_FRAMES}u")
@@ -17,6 +21,7 @@ fi
 
 clang -std=c11 -bundle -fPIC -O2 -Wall \
   -Wno-deprecated-declarations -pthread \
+  "${ARCH_FLAGS[@]}" \
   "${TUNE_FLAGS[@]}" \
   -o "$OUT/Contents/MacOS/RH899X" BarrotAudio.c \
   -framework CoreAudio -framework CoreFoundation -framework IOKit
@@ -38,4 +43,5 @@ else
 fi
 
 echo "built $OUT"
+lipo -info "$OUT/Contents/MacOS/RH899X"
 codesign -dv --verbose=2 "$OUT" 2>&1 | grep -E "Identifier|Authority|TeamIdentifier|Signature|flags"

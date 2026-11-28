@@ -131,6 +131,13 @@ typedef struct Driver {
     atomic_ullong drops;
     atomic_ullong dups;
 
+    atomic_bool usbPresent;
+    atomic_bool streaming;
+    _Atomic UInt32 ioFrameSize;
+    atomic_ullong usbOpenFailures;
+    atomic_ullong usbAltFailures;
+    atomic_ullong usbLostEvents;
+
     atomic_ullong startHost;
     atomic_ullong seed;
 } Driver;
@@ -227,6 +234,8 @@ static OSStatus EndIOOperation(AudioServerPlugInDriverRef inDriver,
                                const AudioServerPlugInIOCycleInfo *inIOCycleInfo);
 
 static void *usbThread(void *arg);
+static void *presenceThread(void *arg);
+static void setUsbPresent(Driver *d, bool present);
 static void notifyProperty(Driver *d, AudioObjectID obj,
                            AudioObjectPropertySelector sel,
                            AudioObjectPropertyScope scope,
@@ -509,6 +518,10 @@ static int usbFind(UsbContext *ctx) {
 
 static void usbClose(UsbContext *ctx) {
     if (ctx->itf) {
+        /* Return the streaming interface to alt 0 before closing.  This is
+         * the UAC2 teardown sequence; leaving the interface armed in alt 1/2
+         * leaves this chip with its S/PDIF transmitter latched to the old
+         * stream until the next port reset. */
         (*ctx->itf)->SetAlternateInterface(ctx->itf, 0);
         (*ctx->itf)->USBInterfaceClose(ctx->itf);
         (*ctx->itf)->Release(ctx->itf);
@@ -619,7 +632,8 @@ static OSStatus AbortDeviceConfigurationChange(AudioServerPlugInDriverRef inDriv
 static OSStatus StartIO(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID,
                         UInt32 inClientID) {
     Driver *d = (Driver *)inDriver;
-    halLog("StartIO client=%u", inClientID);
+    halLog("StartIO client=%u vol=%.3f mute=%d", inClientID,
+           (double)atomic_load(&d->volume), atomic_load(&d->muted) ? 1 : 0);
     (void)inDeviceObjectID;
     (void)inClientID;
     pthread_mutex_lock(&d->lifecycleLock);
@@ -693,7 +707,8 @@ static OSStatus GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver,
     if (!outSampleTime || !outHostTime || !outSeed) return kAudio_ParamError;
     UInt64 startHost = atomic_load(&d->startHost);
     UInt64 now = mach_absolute_time();
-    Float64 period = d->bufferFrames ? d->bufferFrames : 512;
+    UInt32 ioFrames = atomic_load(&d->ioFrameSize);
+    Float64 period = ioFrames ? ioFrames : (d->bufferFrames ? d->bufferFrames : 512);
     Float64 elapsed = 0;
     if (startHost && now > startHost)
         elapsed = (Float64)hostTicksToNanos(now - startHost) / 1e9 *
@@ -746,6 +761,7 @@ static OSStatus DoIOOperation(AudioServerPlugInDriverRef inDriver,
     (void)ioSecondaryBuffer;
     if (inOperationID != kAudioServerPlugInIOOperationWriteMix || !ioMainBuffer)
         return noErr;
+    atomic_store(&d->ioFrameSize, inIOBufferFrameSize);
     if (isBitstream(d))
         bitstreamPush(d, (const int16_t *)ioMainBuffer, inIOBufferFrameSize);
     else
@@ -826,6 +842,12 @@ void *Ranhe_CreatePlugin(CFAllocatorRef allocator, CFUUIDRef typeID) {
     atomic_init(&d->dups, 0);
     atomic_init(&d->startHost, 0);
     atomic_init(&d->seed, 1);
+    atomic_init(&d->usbPresent, false);
+    atomic_init(&d->streaming, false);
+    atomic_init(&d->ioFrameSize, 0);
+    atomic_init(&d->usbOpenFailures, 0);
+    atomic_init(&d->usbAltFailures, 0);
+    atomic_init(&d->usbLostEvents, 0);
     atomic_init(&d->formatMode, kFormatFloat32);
     atomic_init(&d->supportsMixing, 1);
     atomic_init(&d->bitstreamHead, 0);
@@ -839,22 +861,131 @@ void *Ranhe_CreatePlugin(CFAllocatorRef allocator, CFUUIDRef typeID) {
         return NULL;
     }
     pthread_mutex_init(&d->lifecycleLock, NULL);
+    pthread_t pres;
+    if (pthread_create(&pres, NULL, presenceThread, d) == 0)
+        pthread_detach(pres);
     halLog("Ranhe_CreatePlugin result=%p", (void *)d);
     return d;
 }
 
 
+static void setUsbPresent(Driver *d, bool present);
+static void *presenceThread(void *arg);
+
+static int usbRegistryPresent(void) {
+    io_iterator_t iter = 0;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault,
+            IOServiceMatching("IOUSBHostDevice"), &iter) != KERN_SUCCESS)
+        return 0;
+    io_service_t svc;
+    int found = 0;
+    while ((svc = IOIteratorNext(iter))) {
+        CFTypeRef vv = IORegistryEntryCreateCFProperty(svc, CFSTR("idVendor"),
+                                                       kCFAllocatorDefault, 0);
+        CFTypeRef vp = IORegistryEntryCreateCFProperty(svc, CFSTR("idProduct"),
+                                                       kCFAllocatorDefault, 0);
+        int vid = 0, pid = 0;
+        if (vv) CFNumberGetValue((CFNumberRef)vv, kCFNumberIntType, &vid);
+        if (vp) CFNumberGetValue((CFNumberRef)vp, kCFNumberIntType, &pid);
+        if (vv) CFRelease(vv);
+        if (vp) CFRelease(vp);
+        if (vid == 0x0c1c && pid == 0x3a1d) { found = 1; IOObjectRelease(svc); break; }
+        IOObjectRelease(svc);
+    }
+    IOObjectRelease(iter);
+    return found;
+}
+
+static void *presenceThread(void *arg) {
+    Driver *d = (Driver *)arg;
+    unsigned missing = 0;
+    for (;;) {                      /* lives as long as coreaudiod's helper */
+        if (usbRegistryPresent()) {
+            missing = 0;
+            if (!atomic_load(&d->usbPresent)) setUsbPresent(d, true);
+        } else if (++missing >= 3) {
+            /* Require 3 consecutive misses (~3 s) before hiding: one bad
+             * enumeration sample must not make the device flicker. */
+            if (atomic_load(&d->usbPresent)) setUsbPresent(d, false);
+        }
+        usleep(1000000);
+    }
+    return NULL;
+}
+
+static void setUsbPresent(Driver *d, bool present) {
+    if (atomic_load(&d->usbPresent) == present) return;
+    atomic_store(&d->usbPresent, present);
+    if (!present) atomic_fetch_add(&d->usbLostEvents, 1);
+    halLog("usb present=%d (lost=%llu)",
+           present ? 1 : 0, (unsigned long long)atomic_load(&d->usbLostEvents));
+    notifyProperty(d, kAudioObjectPlugInObject, kAudioPlugInPropertyDeviceList,
+                   kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
+    notifyProperty(d, kDeviceID, kAudioDevicePropertyIsHidden,
+                   kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
+    notifyProperty(d, kDeviceID, kAudioDevicePropertyDeviceIsAlive,
+                   kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
+    notifyProperty(d, kDeviceID, kAudioDevicePropertyDeviceIsRunning,
+                   kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
+    notifyProperty(d, kDeviceID, kAudioDevicePropertyDeviceIsRunningSomewhere,
+                   kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
+}
+
+/* UAC2 class-specific control request (standard, no vendor commands). */
+static IOReturn uac2SetCur(IOUSBDeviceInterface **dev, UInt8 cs, UInt8 entity,
+                           UInt8 channel, const void *data, UInt16 len) {
+    IOUSBDevRequestTO rq;
+    memset(&rq, 0, sizeof(rq));
+    rq.bmRequestType = 0x21;          /* class, interface, host -> device */
+    rq.bRequest = 0x01;               /* SET_CUR */
+    rq.wValue = (UInt16)((cs << 8) | channel);
+    rq.wIndex = entity;               /* entity ID | interface 0 << 8 */
+    rq.wLength = len;
+    rq.pData = (void *)data;
+    rq.noDataTimeout = 100;
+    rq.completionTimeout = 100;
+    return (*dev)->DeviceRequestTO(dev, &rq);
+}
+
+/* Feature Unit ID and control bits come from the AC descriptor dump:
+ *   bUnitID = 0x0A, bSourceID = 0x03, bmaControls[0] = 0x00000003
+ *   -> master channel supports MUTE (bit0) and VOLUME (bit1).
+ * After every re-enumeration these registers return to firmware defaults,
+ * which is why PCM went silent until they were re-initialised. */
+static void __attribute__((unused)) uac2InitFeatureUnit(IOUSBDeviceInterface **dev) {
+    UInt8 mute = 0;                   /* 0 = unmuted */
+    UInt8 vol[2] = {0, 0};            /* 0 dB, UAC2 1/256 dB units */
+    IOReturn rm = uac2SetCur(dev, 0x01, 0x0A, 0, &mute, 1);
+    IOReturn rv = uac2SetCur(dev, 0x02, 0x0A, 0, vol, 2);
+    halLog("uac2 FU mute=0x%x vol=0x%x", rm, rv);
+}
+
 static int usbStartStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
-    if (!usbFind(ctx)) return 0;
-    if ((*ctx->itf)->USBInterfaceOpenSeize(ctx->itf)) { usbClose(ctx); return 0; }
+    if (!usbFind(ctx)) {
+        return -1;
+    }
+    IOReturn seize = (*ctx->itf)->USBInterfaceOpenSeize(ctx->itf);
+    if (seize) {
+        atomic_fetch_add(&d->usbOpenFailures, 1);
+        halLog("usb seize failed 0x%x", seize);
+        usbClose(ctx);
+        return -2;
+    }
     mach_port_t port = MACH_PORT_NULL;
     (*ctx->itf)->CreateInterfaceAsyncPort(ctx->itf, &port);
     CFRunLoopSourceRef src = NULL;
     (*ctx->itf)->CreateInterfaceAsyncEventSource(ctx->itf, &src);
     if (src) CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopDefaultMode);
     UInt8 alt = isBitstream(d) ? 2 : 1;
-    if ((*ctx->itf)->SetAlternateInterface(ctx->itf, alt)) { usbClose(ctx); return 0; }
+    IOReturn altRc = (*ctx->itf)->SetAlternateInterface(ctx->itf, alt);
+    if (altRc) {
+        atomic_fetch_add(&d->usbAltFailures, 1);
+        halLog("usb alt=%u failed 0x%x", alt, altRc);
+        usbClose(ctx);
+        return -3;
+    }
     halLog("USB alt=%u", alt);
+    setUsbPresent(d, true);
     UInt8 endpoints = 0;
     (*ctx->itf)->GetNumEndpoints(ctx->itf, &endpoints);
     halLog("USB endpoints=%u", endpoints);
@@ -924,13 +1055,24 @@ static void usbDrainSlots(XferSlot *slots) {
 }
 
 static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
+    atomic_store(&d->streaming, true);
+    notifyProperty(d, kDeviceID, kAudioDevicePropertyDeviceIsRunning,
+                   kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
     UInt32 streamRate = isBitstream(d) ? kBitstreamRate : atomic_load(&d->rate);
     UInt32 samplesPerMicroframe = samplesPerMicroframeForRate(streamRate);
     UInt32 transferFrames = kMicroframes * samplesPerMicroframe;
     UInt32 microframeBytes = microframeBytesForRate(streamRate);
-    UInt64 levelTarget = kLevelFrames(transferFrames, 8) / 3;
-    UInt64 levelHigh = kLevelFrames(transferFrames, 4);
-    UInt64 levelLow = kLevelFrames(transferFrames, 2);
+    UInt64 levelTarget, levelHigh, levelLow;
+    if (isBitstream(d)) {
+        /* Bitstream ring frames are 4 bytes each: 1024 frames ~= 21 ms. */
+        levelTarget = 1024;
+        levelHigh = 1536;
+        levelLow = 768;
+    } else {
+        levelTarget = kLevelFrames(transferFrames, 8) / 3;
+        levelHigh = kLevelFrames(transferFrames, 4);
+        levelLow = kLevelFrames(transferFrames, 2);
+    }
     Float32 pcm[transferFrames * kChannels];
     int16_t words[transferFrames * kChannels];
     UInt64 nextStart = 0;
@@ -952,7 +1094,10 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
         UInt64 cur = 0;
         AbsoluteTime at = {0, 0};
         (*ctx->itf)->GetBusFrameNumber(ctx->itf, &cur, &at);
-        if (nextStart == 0 || nextStart < cur + 2) nextStart = cur + 4;
+        if (nextStart == 0)
+            nextStart = cur + (isBitstream(d) ? 16 : 4);
+        else if (nextStart < cur + 2)
+            nextStart = cur + (isBitstream(d) ? 16 : 4);
         if (isBitstream(d))
             nextStart = (nextStart + kBitstreamMicroframes - 1) &
                         ~(UInt64)(kBitstreamMicroframes - 1);
@@ -1030,7 +1175,7 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
             UInt64 excess = level - levelTarget;
             atomic_fetch_add(isBitstream(d) ? &d->bitstreamTail : &d->tail, excess);
             atomic_fetch_add(&d->drops, excess);
-        } else if (level < levelLow) {
+        } else if (level < levelLow && atomic_load(&d->usbTransfers) > 250) {
             UInt64 tail = atomic_load(isBitstream(d) ? &d->bitstreamTail : &d->tail);
             UInt64 head = atomic_load(isBitstream(d) ? &d->bitstreamHead : &d->head);
             if (tail < head)
@@ -1039,10 +1184,14 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
         }
         CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.0005, false);
     }
+    atomic_store(&d->streaming, false);
+    notifyProperty(d, kDeviceID, kAudioDevicePropertyDeviceIsRunning,
+                   kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain);
 }
 
 static void *usbThread(void *arg) {
     Driver *d = (Driver *)arg;
+    unsigned backoffMs = 100;
     while (atomic_load(&d->running)) {
         UsbContext ctx;
         XferSlot slots[kSlots];
@@ -1050,14 +1199,25 @@ static void *usbThread(void *arg) {
         memset(slots, 0, sizeof(slots));
         if (!usbStartStream(d, &ctx, slots)) {
             usbFreeSlots(slots);
-            usleep(100000);
+            /* Don't hammer alt-setting switches on a flaky link: back off up
+             * to 2 s so the firmware/hub can recover between attempts. */
+            usleep(backoffMs * 1000);
+            if (backoffMs < 2000) backoffMs *= 2;
             if (!atomic_load(&d->running)) break;
             continue;
         }
+        backoffMs = 100;
+        /* Fresh stream: never replay stale audio buffered while unplugged. */
+        atomic_store(&d->head, 0);
+        atomic_store(&d->tail, 0);
+        atomic_store(&d->bitstreamHead, 0);
+        atomic_store(&d->bitstreamTail, 0);
+        atomic_fetch_add(&d->seed, 1);
         usbRunStream(d, &ctx, slots);
         usbDrainSlots(slots);
         usbFreeSlots(slots);
         usbClose(&ctx);
+        backoffMs = 100;
         if (atomic_load(&d->running)) usleep(100000);
     }
     return NULL;
@@ -1433,10 +1593,10 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef inDriver,
             *(UInt32 *)outData = 0;
             break;
         case kAudioDevicePropertyDeviceIsAlive:
-            *(UInt32 *)outData = 1;
+            *(UInt32 *)outData = atomic_load(&d->usbPresent) ? 1 : 0;
             break;
         case kAudioDevicePropertyDeviceIsRunning:
-            *(UInt32 *)outData = atomic_load(&d->running) ? 1 : 0;
+            *(UInt32 *)outData = atomic_load(&d->streaming) ? 1 : 0;
             break;
         case kAudioDevicePropertyDeviceIsRunningSomewhere:
             *(UInt32 *)outData = d->ioClients ? 1 : 0;
@@ -1451,14 +1611,17 @@ static OSStatus GetPropertyData(AudioServerPlugInDriverRef inDriver,
         case kAudioDevicePropertySafetyOffset:
             *(UInt32 *)outData = isBitstream(d) ? RH899X_SAFETY_FRAMES : 0;
             break;
-        case kAudioDevicePropertyZeroTimeStampPeriod:
-            *(UInt32 *)outData = d->bufferFrames;
+        case kAudioDevicePropertyZeroTimeStampPeriod: {
+            UInt32 n = atomic_load(&d->ioFrameSize);
+            *(UInt32 *)outData = n ? n : d->bufferFrames;
             break;
+        }
         case kAudioDevicePropertyBufferFrameSize:
             *(UInt32 *)outData = d->bufferFrames;
             break;
         case kAudioDevicePropertyIsHidden:
-            *(UInt32 *)outData = 0;
+            /* Do not expose a phantom output device while the dongle is gone. */
+            *(UInt32 *)outData = 0;   /* always visible: hiding kept it out of Control Center */
             break;
         case kAudioDevicePropertyVolumeScalar:
             *(Float32 *)outData = atomic_load(&d->volume);

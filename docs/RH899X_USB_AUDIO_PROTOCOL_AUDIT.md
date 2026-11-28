@@ -4,10 +4,10 @@
 
 证据来源：
 
-- 本机原始描述符读取：`$HOME/cm108-macos/usbdesc 0x0c1c 0x3a1d`
+- 本机原始描述符读取：`/Users/alkaidhe/Documents/mac/cm108/usbdesc 0x0c1c 0x3a1d`
 - IOKit 注册信息：`ioreg -r -n 'RH-899X' -l`
 - 桥接实测统计（1 秒粒度）：`cap_peak`、`cap_rms`、`usb_peak`、`usb_rms`
-- 标准 UAC 控制请求探测：`$HOME/cm108-macos/usbfu`
+- 标准 UAC 控制请求探测：`/Users/alkaidhe/Documents/mac/cm108/usbfu`
 
 本阶段未发送任何厂商私有请求，未写 EEPROM，未刷写固件。
 
@@ -92,7 +92,7 @@ Feature Unit 10：`bSourceID=3`，`bmaControls[0]=0x00000003`，
 
 ## 4. 主机侧传输参数（实测）
 
-依据 bridge 阶段的实测统计（bridge 源码未包含在本仓库）：
+依据 `bridge/barrot-bridge.c` 与统计：
 
 | 项目 | 实测 |
 | --- | --- |

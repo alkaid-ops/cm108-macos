@@ -111,7 +111,10 @@ Xcode 账户列表当时为空；`~/Library/Developer/Xcode/UserData/Provisionin
 与 `~/Library/MobileDevice/Provisioning Profiles` 均不存在。
 
 **后续更新（2026-11-25）**：已通过 Xcode 免费 Personal Team 生成并关联
-Apple Development 私钥。具体证书标识不公开。
+Apple Development 私钥，`find-identity` 现在包含
+`C9A652… "Apple Development: heshuangyin@gmail.com (Y9VP2N4968)"`，
+TeamIdentifier `Q42GN4ADQP`。详见
+`RH899X_APPLE_DEVELOPMENT_SIGNING_AUDIT.md`。
 
 ---
 

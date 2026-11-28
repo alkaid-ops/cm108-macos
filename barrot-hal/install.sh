@@ -31,12 +31,6 @@ if ! codesign --verify --strict --deep "$BUNDLE" >/dev/null 2>&1; then
   exit 2
 fi
 
-LIST_AUDIO="${TMPDIR:-/tmp}/rh899x-list-audio-$$"
-clang -std=c11 -O2 -o "$LIST_AUDIO" tools/list_audio.c \
-  -framework CoreAudio -framework CoreFoundation
-trap 'rm -f "$LIST_AUDIO"' EXIT
-DEVICES_BEFORE="$("$LIST_AUDIO" 2>/dev/null || true)"
-
 echo "$SIG" | grep -E "Authority=|TeamIdentifier=|Signature="
 echo "Installing $BUNDLE -> $DEST"
 
@@ -76,6 +70,10 @@ rollback() {
   restart_audio
 }
 
+LIST_AUDIO="${TMPDIR:-/tmp}/rh899x-list-audio-$$"
+clang -std=c11 -O2 -o "$LIST_AUDIO" tools/list_audio.c \
+  -framework CoreAudio -framework CoreFoundation
+
 sudo cp -R "$BUNDLE" "$DEST"
 sudo chown -R root:wheel "$DEST"
 
@@ -85,22 +83,27 @@ echo "--- CoreAudio devices ---"
 DEVICES="$("$LIST_AUDIO" 2>/dev/null || true)"
 echo "$DEVICES"
 
-if [[ "$DEVICES_BEFORE" == *BuiltInSpeakerDevice* &&
-      "$DEVICES" != *BuiltInSpeakerDevice* ]]; then
+if ! grep -q "BuiltInSpeakerDevice" <<<"$DEVICES"; then
   echo "HEALTH CHECK FAILED: built-in speaker disappeared." >&2
   rollback
   echo "--- After rollback ---"
   "$LIST_AUDIO" 2>/dev/null || true
+  rm -f "$LIST_AUDIO"
   exit 4
 fi
 
 echo "--- load check ---"
 if grep -q "RH899X-0c1c-3a1d" <<<"$DEVICES"; then
   echo "SUCCESS: RH-899X is registered with CoreAudio."
+  rm -f "$LIST_AUDIO"
+elif ! ../usbdesc 0x0c1c 0x3a1d >/dev/null 2>&1; then
+  echo "SUCCESS: driver loaded; RH-899X is hidden until the dongle is plugged in."
+  rm -f "$LIST_AUDIO"
 else
   echo "NOT REGISTERED. Check:"
   echo "  sudo log show --last 2m --info --debug --predicate 'process == \"amfid\"'"
   echo "Rollback:"
   echo "  sudo mv $DEST /tmp/ && sudo killall coreaudiod"
+  rm -f "$LIST_AUDIO"
   exit 3
 fi

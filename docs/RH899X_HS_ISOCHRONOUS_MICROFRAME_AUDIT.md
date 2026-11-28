@@ -2,9 +2,6 @@
 
 对象：`RH-899X`，VID:PID `0c1c:3a1d`，UAC 2.0，链路 480 Mbps。
 
-> 说明：本审计产生于 BlackHole bridge 阶段，文中提到的 `bridge/` 工具和
-> 测试日志未包含在本仓库；结论已被最终 HAL 的 64×24 传输路径采用。
-
 测试环境：macOS 14.8.7，Apple M1，BlackHole 2ch 0.7.1。
 
 本审计只做主机侧只读测量和等时数据写入，没有发送任何厂商私有请求，
@@ -322,7 +319,7 @@ SDK 头文件说明：
 只做一次实际听音验收：
 
 ```sh
-cd $HOME/cm108-macos/bridge/tests
+cd /Users/alkaidhe/Documents/mac/cm108/bridge/tests
 ./set_default BlackHole2ch_UID
 cd ..
 ./barrot-bridge-mf
@@ -340,7 +337,7 @@ afplay /tmp/tone440.wav
 ## 14. 复现命令
 
 ```sh
-cd $HOME/cm108-macos/bridge/tests
+cd /Users/alkaidhe/Documents/mac/cm108/bridge/tests
 ./iso_diag --mode clock --seconds 2
 ./iso_diag --mode probe --repeats 5
 ./iso_diag --mode policy

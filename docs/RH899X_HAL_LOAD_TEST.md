@@ -25,13 +25,14 @@ Apple Development 证书在当前机器可用，但不能替代“标准 SIP/Gat
 - AudioServerPlugIn type UUID：`443ABAB8-E7B3-491A-B985-BEB9187030DB`。
 - Device UID：`RH899X-0c1c-3a1d`；名称：`RH-899X`。
 - 签名链：Apple Development → Apple WWDR → Apple Root CA；
-  TeamIdentifier 与 Apple 证书一致。
+  TeamIdentifier 为 `Q42GN4ADQP`。
 - `codesign --verify --strict --deep` 通过，`spctl -a -vv` 返回 accepted。
 - 无 entitlements、无 embedded provisioning profile。
 - 三个已安装 HAL bundle 的 CFBundleIdentifier 均唯一。
 - `install.sh` 只移动/替换 `RH899X.driver`，并检查内置扬声器仍然存在。
 
-测试期间的备份目录与日志未纳入公开仓库。
+备份：`backups/hal-20261125-115824/`。验证期间 BlackHole 与 ToDesk 的
+Mach-O SHA-256 保持完全一致；BlackHole 已在后续测试完成后安全移除。
 
 ## 首次未枚举的根因
 
@@ -123,6 +124,12 @@ Done loading server plug-in com.ranhe.rh899x.audio...
 实际出声；随后切回 `MacBook Air扬声器`，确认声音恢复。只有该步骤通过后，
 才能把状态改为 `PASS`。
 
-## 证据说明
+## 证据文件
 
-测试日志、备份目录和证书标识属于本机内部产物，未纳入公开仓库。
+- `barrot-hal/results/coreaudio_device_prefill_121020.log`
+- `barrot-hal/results/coreaudio_device_prefill_121020_ps.log`
+- `barrot-hal/results/coreaudio_device_prefill_driver.log`
+- `barrot-hal/results/coreaudio_amfi_load.log`
+- `barrot-hal/results/coreaudio_after_blackhole_removal.log`
+- `backups/hal-20261125-115824/`
+- `backups/blackhole-uninstall-20261125-211032/`

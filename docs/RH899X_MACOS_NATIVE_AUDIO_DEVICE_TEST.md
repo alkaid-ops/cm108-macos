@@ -214,7 +214,7 @@ SIGABRT
 在拿到证书后，需要重新执行：
 
 ```sh
-cd $HOME/cm108-macos/barrot-hal
+cd /Users/alkaidhe/Documents/mac/cm108/barrot-hal
 CODESIGN_IDENTITY="..." ./build.sh
 ./install.sh
 ```

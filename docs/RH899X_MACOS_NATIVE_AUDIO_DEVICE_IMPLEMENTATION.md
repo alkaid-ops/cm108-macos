@@ -121,7 +121,7 @@ Stopped -> Starting -> Running -> Stopping -> Stopped
 ## 5. 构建与签名
 
 ```sh
-cd $HOME/cm108-macos/barrot-hal
+cd /Users/alkaidhe/Documents/mac/cm108/barrot-hal
 ./build.sh
 ```
 
