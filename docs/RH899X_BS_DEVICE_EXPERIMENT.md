@@ -175,3 +175,15 @@ StopIO mode=2 tx=4991 frames=1916544 usb_err=0 frame_err=0
 
 Cost: about 130 ms extra start latency on the bitstream path; PCM is
 unchanged.
+
+Long-run comparison after the change:
+
+| Run | Frames | under | mid-stream under (minus tail) |
+| --- | --- | --- | --- |
+| old (64 ms buffer) | 10,880,640 (227 s) | 10,368 (216 ms) | ~8,832 (184 ms) |
+| new A | 11,377,920 (237 s) | 4,224 (88 ms) | ~2,688 (56 ms) |
+| new B | 11,387,904 (237 s) | 1,920 (40 ms) | ~384 (8 ms) |
+
+`drops`, `dups`, `over` and USB errors stay 0. The user reports the
+stutter is "much better"; remaining events are rare (one short gap per
+few minutes).
