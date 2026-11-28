@@ -1092,10 +1092,14 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
     UInt32 microframeBytes = microframeBytesForRate(streamRate);
     UInt64 levelTarget, levelHigh, levelLow;
     if (isBitstream(d)) {
-        /* Bitstream ring frames are 4 bytes each: 1024 frames ~= 21 ms. */
-        levelTarget = 1024;
-        levelHigh = 1536;
-        levelLow = 768;
+        /* Scale with the client's IO buffer. A 1536-frame callback pushed
+         * into a 1536-frame high-water mark made the corrector discard
+         * ~10% of the stream. */
+        UInt32 ioFrames = atomic_load(&d->ioFrameSize);
+        if (ioFrames < 128 || ioFrames > 8192) ioFrames = 512;
+        levelTarget = (UInt64)ioFrames * 4;
+        levelHigh = (UInt64)ioFrames * 6;
+        levelLow = (UInt64)ioFrames * 2;
     } else {
         levelTarget = kLevelFrames(transferFrames, 8) / 3;
         levelHigh = kLevelFrames(transferFrames, 4);
@@ -1119,6 +1123,17 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
            (double)hostTicksToNanos(mach_absolute_time() - prefillStart) / 1e6);
 
     while (atomic_load(&d->running)) {
+        if (isBitstream(d)) {
+            /* ioFrameSize is set by the first IO callback. Recompute the
+             * water marks here so the 512-frame fallback used during
+             * startup cannot keep the low mark below one client buffer. */
+            UInt32 io = atomic_load(&d->ioFrameSize);
+            if (io >= 128 && io <= 8192) {
+                levelTarget = (UInt64)io * 4;
+                levelHigh = (UInt64)io * 6;
+                levelLow = (UInt64)io * 2;
+            }
+        }
         UInt64 cur = 0;
         AbsoluteTime at = {0, 0};
         (*ctx->itf)->GetBusFrameNumber(ctx->itf, &cur, &at);
@@ -1203,7 +1218,8 @@ static void usbRunStream(Driver *d, UsbContext *ctx, XferSlot *slots) {
             UInt64 excess = level - levelTarget;
             atomic_fetch_add(isBitstream(d) ? &d->bitstreamTail : &d->tail, excess);
             atomic_fetch_add(&d->drops, excess);
-        } else if (level < levelLow && atomic_load(&d->usbTransfers) > 250) {
+        } else if (!isBitstream(d) && level < levelLow &&
+                   atomic_load(&d->usbTransfers) > 250) {
             UInt64 tail = atomic_load(isBitstream(d) ? &d->bitstreamTail : &d->tail);
             UInt64 head = atomic_load(isBitstream(d) ? &d->bitstreamHead : &d->head);
             if (tail < head)

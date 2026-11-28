@@ -66,3 +66,66 @@ new device; `first IO buffer bytes` is therefore 1536 x 4 = 6144.
 Only now is a VLC test meaningful. Select `RH-899X Bitstream` (VLC will
 also list it as "Encoded Output") and verify the same 4-byte-per-frame
 path is used.
+
+## VLC acceptance (2026-11-28)
+
+Environment: VLC 3.0.24 (`auhal`), candidate `382534b6...` (ring policy
+scaled to the client IO buffer), commit `1d89e6e` plus the policy fix.
+
+VLC log:
+
+```
+Trying to use stored audio device 55 (digital)
+'RH-899X Bitstream' supports digital output
+original stream format: [48000][3cac][76][6144][1536][0][2][16]
+setting stream format:  [48000][3cac][76][6144][1536][0][2][16]
+digital output successfully opened
+using audio converter module "tospdif"
+using audio decoder module "spdif"
+```
+
+First attempt passed the wrong decimal for the encoded device
+(`15728711` = device 71); VLC correctly rejected it and fell back to the
+built-in output. The correct value is `55 | 0xf00000 = 15728695`.
+
+HAL:
+
+```
+stream format obj=259 mode=2
+USB alt=2
+StopIO mode=2 tx=743 frames=285312 usb_err=0 frame_err=0
+        under=0 over=0 drops=0 dups=1173 ring=4245
+```
+
+Before scaling the ring policy, the same 1536-frame callbacks produced
+`drops=25944` (~10% of the stream). With the policy scaled to
+`4/6/2` IO buffers, drops went to 0.
+
+A listening test then reported a "USB unplug"-style pop about 3 s into
+playback. HAL counters showed `drops=0` but `dups=1173`: the low-water
+corrector was repeating single frames inside the IEC61937 burst (it
+started after the first 250 transfers, i.e. ~2 s). Duplicating a frame
+inside a burst breaks the decoder's framing.
+
+Fix (`4f9a621d...`): the water marks are recomputed from the real
+`ioFrameSize` on every loop, and the duplicate-frame path is disabled for
+bitstream. Re-run:
+
+```
+StopIO mode=2 tx=758 frames=291072 usb_err=0 frame_err=0
+        under=0 over=0 drops=0 dups=0 ring=2304
+```
+
+Acoustic check (built-in mic, 6 s excerpt):
+
+| Capture | mean | max |
+| --- | --- | --- |
+| ambient | -60.2 dB | -36.7 dB |
+| playback | -50.1 dB | -22.2 dB |
+
+PCM device after the run remains Float32 8 B/frame / 192 frames; system
+default output stays on the built-in speaker.
+
+Status: **PARTIAL** - device selection, format negotiation, data path and
+audible output are verified; human confirmation that the decoded AC3
+content is correct is still pending.
