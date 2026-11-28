@@ -126,6 +126,12 @@ Acoustic check (built-in mic, 6 s excerpt):
 PCM device after the run remains Float32 8 B/frame / 192 frames; system
 default output stays on the built-in speaker.
 
-Status: **PARTIAL** - device selection, format negotiation, data path and
-audible output are verified; human confirmation that the decoded AC3
-content is correct is still pending.
+Status: **PASS** (2026-11-28, user listening confirmation).
+
+- VLC selected `RH-899X Bitstream` as an Encoded Output and opened the
+  `cac3` stream.
+- HAL consumed every callback in full, `drops=0 dups=0 under=0 over=0`,
+  `usb_err=0`.
+- The user confirmed the 6-second AC3 excerpt plays cleanly with no
+  USB-unplug-style pop.
+- PCM device stayed Float32 / 8 B per frame / 192 frames throughout.
